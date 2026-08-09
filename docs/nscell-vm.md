@@ -29,16 +29,19 @@ The artifact contains `incus.tar.xz`, `disk.qcow2`, and `SHA256SUMS`.
 - `Build VM standard` runs on profile changes or manually. It builds each
   selected profile, checks the qcow2 file, and publishes commit-addressed and
   stable tags without starting a guest.
-- `Test workloads in VM` is the manual and reusable entry point for VM
-  coverage. Each selected target gets its own runner and VM, so workloads run
-  concurrently rather than sharing a guest. The special `smoke` target checks
-  BPF LSM, nscell daemon readiness, Docker runtime registration, and one
-  `busybox` container.
-- The same workflow accepts a space-separated list such as
-  `procfs-cpu systemd-pid1`, or `all` for the complete suite.
+- `Test workloads in VM` is the manual VM coverage entry point. Each selected
+  target gets its own runner and VM, so workloads run concurrently rather than
+  sharing a guest. The `smoke`, `gate`, and `full` suites are defined in
+  `tests/manifest.json`; an explicit `targets` value overrides the suite.
+- VM `gate` contains only tests whose environment coverage justifies an
+  isolated guest. Host `gate` covers the remaining release checks without
+  paying the nested VM startup cost.
+- The special `smoke` target checks BPF LSM, nscell daemon readiness, Docker
+  runtime registration, and one `busybox` container.
 
 Both test workflows accept `nscell_image`. The nscell release workflow passes
-an immutable digest, while manual runs can select any published nscell image.
+an immutable digest and waits for their results, while manual runs can select
+any published nscell image.
 The smoke workflow also pulls and exports its BusyBox image on the runner, so
 the guest setup and smoke test do not depend on guest network access. Test
 assets and a CI repository snapshot are exposed through one read-only Incus

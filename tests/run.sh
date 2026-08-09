@@ -33,12 +33,7 @@ EOF
 }
 
 __workload_names() {
-  local _workload_path
-
-  for _workload_path in "${_workload_dir}"/workloads/*; do
-    [[ -d "$_workload_path" && -f "${_workload_path}/run.sh" ]] || continue
-    basename "$_workload_path"
-  done | sort
+  bash "${_workload_dir}/manifest.sh" workloads
 }
 
 __workload_script() {

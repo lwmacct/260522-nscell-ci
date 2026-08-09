@@ -1,0 +1,156 @@
+name: Test host
+run-name: Host ${{ inputs.suite }} / ${{ inputs.nscell_image }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      nscell_image:
+        description: Exact OCI image containing the NSCell multi-role binary
+        required: true
+        default: ghcr.io/lwmacct/260522-nscell:latest
+        type: string
+      suite:
+        description: Manifest suite to run
+        required: true
+        default: gate
+        type: choice
+        options:
+          - smoke
+          - gate
+          - full
+      targets:
+        description: Optional space-separated targets overriding the suite
+        required: false
+        default: ""
+        type: string
+      debug_tmate:
+        description: Open an interactive SSH session before setup
+        required: true
+        default: false
+        type: boolean
+      debug_target:
+        description: Target that opens tmate when debug_tmate is true
+        required: true
+        default: oci-lifecycle
+        type: string
+
+concurrency:
+  group: test-host-${{ github.ref }}-${{ inputs.nscell_image }}-${{ inputs.suite }}-${{ inputs.targets || 'manifest' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CI_REPOSITORY: lwmacct/260522-nscell-ci
+  NSCELL_GATE_MODE: ci
+  NSCELL_CI_TEST_ROOT: /tmp/nscell
+  NSCELL_CI_IMAGE_CACHE_DIR: /tmp/nscell/images
+  NSCELL_IMAGE: ${{ inputs.nscell_image }}
+
+jobs:
+  prepare:
+    name: Prepare host matrix
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout CI repository
+        uses: actions/checkout@v7.0.0
+        with:
+          repository: ${{ env.CI_REPOSITORY }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Select manifest targets
+        id: matrix
+        env:
+          TEST_SUITE: ${{ inputs.suite }}
+          SELECTED_TARGETS: ${{ inputs.targets }}
+        run: |
+          __main() {
+            local _matrix
+
+            _matrix="$(bash tests/manifest.sh select host "${TEST_SUITE}" "${SELECTED_TARGETS}")"
+            echo "matrix=${_matrix}" >> "${GITHUB_OUTPUT}"
+            {
+              echo "## Host test matrix"
+              echo
+              echo "- Suite: \`${TEST_SUITE}\`"
+              echo "- Image: \`${NSCELL_IMAGE}\`"
+              jq -r '.[] | "- Target: `\(.name)` (timeout: \(.timeout_minutes)m)"' <<<"${_matrix}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          }
+
+          __main "$@"
+
+  test:
+    name: ${{ matrix.name }} / host
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ matrix.timeout_minutes }}
+    strategy:
+      fail-fast: false
+      max-parallel: 40
+      matrix:
+        include: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    env:
+      NSCELL_WORKLOAD_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.name }}
+    steps:
+      - name: Checkout CI repository
+        uses: actions/checkout@v7.0.0
+        with:
+          repository: ${{ env.CI_REPOSITORY }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Open tmate session
+        if: ${{ inputs.debug_tmate && matrix.name == inputs.debug_target }}
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
+
+      - name: Setup ORAS
+        uses: oras-project/setup-oras@v2.0.1
+        with:
+          version: 1.3.3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install dependencies
+        run: bash scripts/ci.sh install-dependencies
+
+      - name: Show host capabilities
+        run: bash scripts/ci.sh show-host-capabilities
+
+      - name: Setup NSCell runtime host
+        run: bash scripts/ci.sh setup-runtime-host
+
+      - name: Verify CI gate mode
+        run: bash scripts/ci.sh verify-gate
+
+      - name: Run host workload
+        run: bash scripts/ci.sh run-workload "${{ matrix.name }}"
+
+      - name: Collect logs
+        if: always()
+        run: bash scripts/ci.sh collect-logs
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: test-host-${{ matrix.name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.NSCELL_CI_TEST_ROOT }}/runs/**/*.log
+          if-no-files-found: ignore
