@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2154 # Variables are initialized by tests/library/env.sh.
 
 __assert_nscell_ready() {
 	__log "checking nscell services"

@@ -1,0 +1,157 @@
+name: Check main
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: check-main-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  ACTIONLINT_VERSION: 1.7.12
+
+jobs:
+  static:
+    name: Static checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@v6.5.0
+        with:
+          go-version: "1.25.6"
+          cache: false
+
+      - name: Install actionlint
+        env:
+          GOBIN: ${{ runner.temp }}/bin
+        run: |
+          __main() {
+            set -euo pipefail
+            go install "github.com/rhysd/actionlint/cmd/actionlint@v${ACTIONLINT_VERSION}"
+            echo "${GOBIN}" >> "${GITHUB_PATH}"
+          }
+
+          __main "$@"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Run repository checks
+        run: bash .github/scripts/check.sh
+
+  changes:
+    name: Select smoke coverage
+    runs-on: ubuntu-24.04
+    outputs:
+      nscell_image: ${{ steps.image.outputs.nscell_image }}
+      runtime: ${{ steps.paths.outputs.runtime }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect runtime test changes
+        id: paths
+        env:
+          BEFORE_SHA: ${{ github.event.before || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          __main() {
+            local _before_sha
+            local -a _paths=()
+
+            set -euo pipefail
+            if [[ "${EVENT_NAME}" == workflow_dispatch ]]; then
+              echo "runtime=true" >> "${GITHUB_OUTPUT}"
+              return
+            fi
+
+            _before_sha="${BEFORE_SHA}"
+            if [[ -z "${_before_sha}" || "${_before_sha}" =~ ^0+$ ]] ||
+              ! git cat-file -e "${_before_sha}^{commit}" 2>/dev/null; then
+              echo "runtime=true" >> "${GITHUB_OUTPUT}"
+              return
+            fi
+
+            mapfile -t _paths < <(git diff --name-only "${_before_sha}" "${GITHUB_SHA}")
+            if printf '%s\n' "${_paths[@]}" | grep -Eq \
+              '^(\.github/actions/|\.github/scripts/|\.github/workflows/(check|test-host|test-release|test-vm)\.yml$|scripts/|tests/)'; then
+              echo "runtime=true" >> "${GITHUB_OUTPUT}"
+            else
+              echo "runtime=false" >> "${GITHUB_OUTPUT}"
+            fi
+          }
+
+          __main "$@"
+
+      - name: Setup ORAS
+        if: steps.paths.outputs.runtime == 'true'
+        uses: oras-project/setup-oras@v2.0.1
+        with:
+          version: 1.3.3
+
+      - name: Resolve smoke NSCell image
+        if: steps.paths.outputs.runtime == 'true'
+        id: image
+        env:
+          IMAGE_REF: ghcr.io/lwmacct/260522-nscell:latest
+        run: |
+          __main() {
+            local _image_ref
+
+            set -euo pipefail
+            _image_ref="$(oras resolve --full-reference "${IMAGE_REF}")"
+            if [[ ! "${_image_ref}" =~ ^ghcr.io/lwmacct/260522-nscell@sha256:[0-9a-f]{64}$ ]]; then
+              echo "unexpected resolved NSCell image reference: ${_image_ref}" >&2
+              return 1
+            fi
+            echo "nscell_image=${_image_ref}" >> "${GITHUB_OUTPUT}"
+          }
+
+          __main "$@"
+
+  host-smoke:
+    name: Host smoke
+    needs:
+      - static
+      - changes
+    if: needs.changes.outputs.runtime == 'true'
+    uses: ./.github/workflows/test-host.yml
+    with:
+      nscell_image: ${{ needs.changes.outputs.nscell_image }}
+      suite: smoke
+    secrets: inherit
+
+  vm-smoke:
+    name: VM smoke
+    needs:
+      - static
+      - changes
+    if: needs.changes.outputs.runtime == 'true'
+    uses: ./.github/workflows/test-vm.yml
+    with:
+      image_name: standard
+      image_ref: ghcr.io/lwmacct/260522-nscell-ci:artifact-images-standard
+      nscell_image: ${{ needs.changes.outputs.nscell_image }}
+      suite: smoke
+    secrets: inherit
