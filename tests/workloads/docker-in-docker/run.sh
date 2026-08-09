@@ -36,6 +36,11 @@ services:
     restart: "no"
     runtime: nscell
     privileged: false
+    command:
+      - --feature
+      - containerd-snapshotter=false
+      - --storage-driver
+      - overlay2
     annotations:
       io.backend.security.profile: dind
     labels:
