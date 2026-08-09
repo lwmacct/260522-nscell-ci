@@ -4,10 +4,19 @@ set -euo pipefail
 
 _repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+__require_command() {
+	local _command="$1"
+
+	if ! command -v "${_command}" >/dev/null; then
+		echo "missing required command: ${_command}" >&2
+		return 1
+	fi
+}
+
 __check_shell() {
 	local -a _shell_files=()
 
-	mapfile -t _shell_files < <(rg --files -g '*.sh' | sort)
+	mapfile -t _shell_files < <(git ls-files '*.sh' | sort)
 	((${#_shell_files[@]} > 0))
 	printf '%s\n' "${_shell_files[@]}" | xargs -r -n1 bash -n
 	shellcheck "${_shell_files[@]}"
@@ -29,7 +38,7 @@ import sys
 _path = pathlib.Path(sys.argv[1])
 ast.parse(_path.read_text(), filename=str(_path))
 PY
-	done < <(rg --files -g '*.py' | sort)
+	done < <(git ls-files '*.py' | sort)
 }
 
 __check_manifest() {
@@ -52,11 +61,10 @@ __check_manifest() {
 
 __main() {
 	cd "${_repo_root}"
-	command -v actionlint >/dev/null
-	command -v jq >/dev/null
-	command -v rg >/dev/null
-	command -v shellcheck >/dev/null
-	command -v uv >/dev/null
+	__require_command actionlint
+	__require_command jq
+	__require_command shellcheck
+	__require_command uv
 
 	__check_shell
 	__check_python
