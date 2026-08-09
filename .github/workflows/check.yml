@@ -51,9 +51,6 @@ jobs:
 
           __main "$@"
 
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v7
-
       - name: Run repository checks
         run: bash .github/scripts/check.sh
 

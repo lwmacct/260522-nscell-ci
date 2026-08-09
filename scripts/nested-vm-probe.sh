@@ -142,7 +142,7 @@ __boot_guest() {
 	_qemu_status=$?
 	set -e
 
-	cat "$_qemu_log" | tee -a "$_summary"
+	tee -a "$_summary" <"$_qemu_log"
 	if ! grep -q '^nscell-nested-vm-bpf-lsm-ok$' < <(tr -d '\r' <"$_qemu_log"); then
 		echo "guest did not report successful BPF LSM probe (qemu status ${_qemu_status})" >&2
 		return 1

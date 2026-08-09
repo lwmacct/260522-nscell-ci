@@ -26,11 +26,11 @@ __check_python() {
 	local _python_file
 
 	while IFS= read -r _python_file; do
-		if [[ "$(head -n1 "${_python_file}")" != '#!/usr/bin/env -S uv run python' ]]; then
+		if [[ "$(head -n1 "${_python_file}")" != '#!/usr/bin/env python3' ]]; then
 			echo "invalid Python shebang: ${_python_file}" >&2
 			return 1
 		fi
-		uv run python - "${_python_file}" <<'PY'
+		python3 - "${_python_file}" <<'PY'
 import ast
 import pathlib
 import sys
@@ -63,8 +63,8 @@ __main() {
 	cd "${_repo_root}"
 	__require_command actionlint
 	__require_command jq
+	__require_command python3
 	__require_command shellcheck
-	__require_command uv
 
 	__check_shell
 	__check_python

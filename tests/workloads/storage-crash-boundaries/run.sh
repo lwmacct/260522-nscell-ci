@@ -137,10 +137,12 @@ __wait_for_crash_trigger() {
     sleep 0.2
   done
   echo "rsync crash trigger was not armed for ${_expected_trigger}" >&2
-  sudo test -f "${_state_root}/invocations.log" &&
+  if sudo test -f "${_state_root}/invocations.log"; then
     sudo tail -100 "${_state_root}/invocations.log" >&2 || true
-  sudo test -f "${_state_root}/rsync-output.log" &&
+  fi
+  if sudo test -f "${_state_root}/rsync-output.log"; then
     sudo cat "${_state_root}/rsync-output.log" >&2 || true
+  fi
   return 1
 }
 

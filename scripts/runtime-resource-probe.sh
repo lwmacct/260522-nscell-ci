@@ -30,7 +30,7 @@ __run_required() {
 
 	__log "$_name"
 	if "$@" >"${_log_dir}/${_name}.log" 2>&1; then
-		cat "${_log_dir}/${_name}.log" | tee -a "$_summary"
+		tee -a "$_summary" <"${_log_dir}/${_name}.log"
 		return
 	fi
 	__record_failure "$_name" "$(cat "${_log_dir}/${_name}.log")"
