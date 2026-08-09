@@ -42,6 +42,9 @@ The artifact contains `incus.tar.xz`, `disk.qcow2`, and `SHA256SUMS`.
 Both test workflows accept `nscell_image`. The nscell release workflow passes
 an immutable digest and waits for their results, while manual runs can select
 any published nscell image.
+Before expanding the VM matrix, the workflow resolves the requested VM tag to
+an immutable OCI digest. Every isolated VM in that run therefore consumes the
+same image even if the stable profile tag changes while tests are running.
 The smoke workflow also pulls and exports its BusyBox image on the runner, so
 the guest setup and smoke test do not depend on guest network access. Test
 assets and a CI repository snapshot are exposed through one read-only Incus

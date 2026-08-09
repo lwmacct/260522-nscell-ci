@@ -32,12 +32,18 @@ The expensive Ubuntu 24.04 systemd environment is published separately as
 remain under `tests/workloads/systemd-pid1/` and are injected at test time, so
 the published image contains no workload assertions.
 
-The workflows are started through `workflow_dispatch`, either manually or by
-the product release gate. The product workflow waits for their conclusions,
-while runs, billing, matrix jobs, logs, and artifacts remain in this public
-repository. The test runner fetches the selected linux/amd64 image manifest
-and layers, extracts `/usr/local/bin/nscell`, then installs the binary and the
+`Test release` is the product-facing `workflow_dispatch` entry point. It calls
+the reusable host and VM workflows in parallel, so every release gate uses one
+CI commit and has one final conclusion. `Test host` and `Test workloads in VM`
+remain manually dispatchable for focused runs and debugging. Runs, billing,
+matrix jobs, logs, and artifacts remain in this public repository. The test
+runner fetches the selected linux/amd64 image manifest and layers, extracts
+`/usr/local/bin/nscell`, then installs the binary and the
 `nscell-daemon.service` systemd unit.
+
+`Check main` validates every direct push to `main`. It always runs repository
+static checks and adds host and VM smoke coverage when runtime test files or
+Actions change. This repository does not use a pull-request workflow.
 
 The dedicated Ubuntu VM image and its nested Incus validation workflows are
 documented in [`docs/nscell-vm.md`](docs/nscell-vm.md).
