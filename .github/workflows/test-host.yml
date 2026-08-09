@@ -2,6 +2,32 @@ name: Test host
 run-name: Host ${{ inputs.suite }} / ${{ inputs.nscell_image }}
 
 on:
+  workflow_call:
+    inputs:
+      nscell_image:
+        description: Exact OCI image containing the NSCell multi-role binary
+        required: true
+        type: string
+      suite:
+        description: Manifest suite to run
+        required: false
+        default: gate
+        type: string
+      targets:
+        description: Optional space-separated targets overriding the suite
+        required: false
+        default: ""
+        type: string
+      debug_tmate:
+        description: Open an interactive SSH session before setup
+        required: false
+        default: false
+        type: boolean
+      debug_target:
+        description: Target that opens tmate when debug_tmate is true
+        required: false
+        default: oci-lifecycle
+        type: string
   workflow_dispatch:
     inputs:
       nscell_image:

@@ -2,6 +2,32 @@ name: Test workloads in VM
 run-name: VM ${{ inputs.suite }} / ${{ inputs.image_name }} / ${{ inputs.nscell_image }}
 
 on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: VM image profile name
+        required: false
+        default: standard
+        type: string
+      image_ref:
+        description: Explicit VM image OCI reference; empty uses the stable profile tag
+        required: false
+        default: ""
+        type: string
+      nscell_image:
+        description: Exact OCI image containing the NSCell binary
+        required: true
+        type: string
+      suite:
+        description: Manifest suite to run
+        required: false
+        default: gate
+        type: string
+      targets:
+        description: Optional space-separated targets overriding the suite
+        required: false
+        default: ""
+        type: string
   workflow_dispatch:
     inputs:
       image_name:

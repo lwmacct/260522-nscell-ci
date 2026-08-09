@@ -1,0 +1,60 @@
+name: Test release
+run-name: Release gate / ${{ inputs.nscell_image }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      nscell_image:
+        description: Exact OCI image containing the NSCell binary
+        required: true
+        type: string
+      vm_image_ref:
+        description: Explicit standard VM image OCI reference
+        required: true
+        default: ghcr.io/lwmacct/260522-nscell-ci:artifact-images-standard
+        type: string
+      host_suite:
+        description: Host manifest suite
+        required: true
+        default: gate
+        type: choice
+        options:
+          - smoke
+          - gate
+          - full
+      vm_suite:
+        description: VM manifest suite
+        required: true
+        default: gate
+        type: choice
+        options:
+          - smoke
+          - gate
+          - full
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: test-release-${{ github.ref }}-${{ inputs.nscell_image }}-${{ inputs.host_suite }}-${{ inputs.vm_suite }}
+  cancel-in-progress: true
+
+jobs:
+  host:
+    name: Host ${{ inputs.host_suite }}
+    uses: ./.github/workflows/test-host.yml
+    with:
+      nscell_image: ${{ inputs.nscell_image }}
+      suite: ${{ inputs.host_suite }}
+    secrets: inherit
+
+  vm:
+    name: VM ${{ inputs.vm_suite }}
+    uses: ./.github/workflows/test-vm.yml
+    with:
+      image_name: standard
+      image_ref: ${{ inputs.vm_image_ref }}
+      nscell_image: ${{ inputs.nscell_image }}
+      suite: ${{ inputs.vm_suite }}
+    secrets: inherit
