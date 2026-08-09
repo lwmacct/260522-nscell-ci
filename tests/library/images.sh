@@ -35,7 +35,7 @@ __ensure_host_image() {
 	local _image="$1"
 	if ! docker image inspect "$_image" >/dev/null 2>&1; then
 		__log "pulling host image ${_image}"
-		__retry 3 docker pull "$_image"
+		__retry 3 docker pull --quiet "$_image"
 	fi
 }
 

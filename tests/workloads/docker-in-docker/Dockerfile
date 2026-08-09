@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=ghcr.io/lwmacct/250210-cr-docker:latest
+ARG BASE_IMAGE=docker.io/library/docker:29.6.2-dind
 FROM ${BASE_IMAGE}
 
 COPY smoke.sh /usr/local/bin/nscell-ci-docker-in-docker-smoke

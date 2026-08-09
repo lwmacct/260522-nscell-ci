@@ -18,17 +18,17 @@ ghcr.io/lwmacct/260522-nscell-ci:artifact-images-standard-sha-<12-char-commit>
 ```
 
 The stable profile tag is
-`ghcr.io/lwmacct/260522-nscell-ci:artifact-images-standard`. Building a
-candidate does not update this tag.
+`ghcr.io/lwmacct/260522-nscell-ci:artifact-images-standard`. A successful
+build publishes the commit-addressed tag and updates this stable tag.
 
 GHCR artifacts are imported into Incus with ORAS before the VM is started.
 The artifact contains `incus.tar.xz`, `disk.qcow2`, and `SHA256SUMS`.
 
 ## Workflows
 
-- `Build test VM images` runs on profile changes or manually. It builds each
-  selected profile, checks the qcow2 file, and publishes only a
-  commit-addressed candidate without starting a guest.
+- `Build VM standard` runs on profile changes or manually. It builds each
+  selected profile, checks the qcow2 file, and publishes commit-addressed and
+  stable tags without starting a guest.
 - `Test workloads in VM` is the manual and reusable entry point for VM
   coverage. Each selected target gets its own runner and VM, so workloads run
   concurrently rather than sharing a guest. The special `smoke` target checks

@@ -1,0 +1,8 @@
+[Unit]
+Description=NSCell CI systemd probe
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/nscell-ci-systemd-pid1-probe

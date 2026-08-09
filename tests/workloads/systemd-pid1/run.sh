@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1091,SC2154
+
 set -euo pipefail
 
 _workload_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,7 +58,7 @@ __main() {
 	docker rm -f "$_systemd_pid1_name" >/dev/null 2>&1 || true
 	rm -rf "$_root"
 	install -d -m 0755 "$_root"
-	__build_ci_image "$_systemd_pid1_image" "${_workload_dir}/workloads/systemd-pid1" --build-arg "BASE_IMAGE=${_systemd_pid1_base_image}"
+	__ensure_host_image "$_systemd_pid1_image"
 
 	__log "running systemd as pid 1 under nscell"
 	docker run -d \
@@ -73,6 +75,17 @@ __main() {
 		"$_systemd_pid1_image" >/dev/null
 
 	__wait_for_container "$_systemd_pid1_name"
+	docker cp \
+		"${_workload_path}/probe.sh" \
+		"${_systemd_pid1_name}:/usr/local/bin/nscell-ci-systemd-pid1-probe"
+	docker cp \
+		"${_workload_path}/probe.service" \
+		"${_systemd_pid1_name}:/etc/systemd/system/nscell-ci-probe.service"
+	docker exec "$_systemd_pid1_name" sh -lc '
+		set -eu
+		chmod 0755 /usr/local/bin/nscell-ci-systemd-pid1-probe
+		systemctl daemon-reload
+	'
 
 	docker exec "$_systemd_pid1_name" sh -lc '
 	set -eu

@@ -27,6 +27,12 @@ artifact. A manual run may provide a space-separated `workloads` value to
 isolate one or more failing workloads; an empty value always means the full
 suite.
 
+The expensive Ubuntu 24.04 systemd environment is published separately as
+`ghcr.io/lwmacct/260522-nscell-ci:systemd-pid1-latest`. Only the
+`systemd-pid1` workload pulls it, on demand. The probe script and systemd unit
+remain under `tests/workloads/systemd-pid1/` and are injected at test time, so
+the published image contains no workload assertions.
+
 The workflow is always started through `workflow_dispatch`, either manually or
 asynchronously by the product release workflow. The run and its billing, matrix
 jobs, logs, and artifacts therefore remain in this public repository. It

@@ -1,0 +1,4 @@
+**
+!containers/
+!containers/systemd-pid1/
+!containers/systemd-pid1/Dockerfile

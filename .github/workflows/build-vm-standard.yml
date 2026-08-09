@@ -1,4 +1,4 @@
-name: Build test VM images
+name: Build VM standard
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - images/*.yaml
-      - .github/workflows/build-test-vm-image.yml
+      - .github/workflows/build-vm-standard.yml
   workflow_dispatch:
     inputs:
       images:
@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: test-vm-images-${{ github.ref }}
+  group: build-vm-standard-${{ github.ref }}
   cancel-in-progress: false
 
 defaults:
@@ -80,8 +80,8 @@ jobs:
                 ! git cat-file -e "${_before_sha}^{commit}" 2>/dev/null; then
                 mapfile -t _images < <(__all_images)
               elif git diff --name-only "${_before_sha}" "${GITHUB_SHA}" -- \
-                .github/workflows/build-test-vm-image.yml |
-                grep -qx '.github/workflows/build-test-vm-image.yml'; then
+                .github/workflows/build-vm-standard.yml |
+                grep -qx '.github/workflows/build-vm-standard.yml'; then
                 mapfile -t _images < <(__all_images)
               else
                 mapfile -t _images < <(

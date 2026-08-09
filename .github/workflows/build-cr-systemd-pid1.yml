@@ -1,0 +1,111 @@
+name: Build CR systemd-pid1
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - containers/systemd-pid1/**
+      - .github/workflows/build-cr-systemd-pid1.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-cr-systemd-pid1
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_CHANNEL: systemd-pid1
+
+jobs:
+  build:
+    name: Ubuntu 24.04 / AMD64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare revision
+        id: revision
+        run: |
+          __main() {
+            local _full_sha
+
+            set -euo pipefail
+            _full_sha="$(git rev-parse HEAD)"
+            printf 'full_sha=%s\n' "${_full_sha}" >> "${GITHUB_OUTPUT}"
+            printf 'short_sha=%s\n' "${_full_sha:0:12}" >> "${GITHUB_OUTPUT}"
+          }
+
+          __main "$@"
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ env.IMAGE_CHANNEL }}-latest
+            type=raw,value=${{ env.IMAGE_CHANNEL }}-sha-${{ steps.revision.outputs.short_sha }}
+
+      - name: Build and publish image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: containers/systemd-pid1/Dockerfile
+          platforms: linux/amd64
+          push: true
+          pull: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            IMAGE_CHANNEL=${{ env.IMAGE_CHANNEL }}
+            VCS_REF=${{ steps.revision.outputs.full_sha }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_CHANNEL }}-buildcache-amd64
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_CHANNEL }}-buildcache-amd64,mode=max
+          provenance: mode=max
+          sbom: true
+
+      - name: Summarize published image
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          SHORT_SHA: ${{ steps.revision.outputs.short_sha }}
+        run: |
+          __main() {
+            set -euo pipefail
+            [[ "${IMAGE_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]
+            {
+              echo "## Published systemd PID 1 image"
+              echo
+              echo "- Stable: \`${REGISTRY}/${IMAGE_NAME}:${IMAGE_CHANNEL}-latest\`"
+              echo "- Candidate: \`${REGISTRY}/${IMAGE_NAME}:${IMAGE_CHANNEL}-sha-${SHORT_SHA}\`"
+              echo "- Immutable: \`${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST}\`"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          }
+
+          __main "$@"

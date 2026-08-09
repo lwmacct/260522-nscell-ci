@@ -44,7 +44,7 @@ _storage_crash_sync_out_id="${NSCELL_CI_STORAGE_CRASH_SYNC_OUT_ID:-storage-crash
 
 _docker_in_docker_name="${NSCELL_CI_DOCKER_IN_DOCKER_NAME:-nscell-docker-in-docker${_workload_resource_id:+-${_workload_resource_id}}}"
 _docker_in_docker_network="${NSCELL_CI_DOCKER_IN_DOCKER_NETWORK:-nscell-docker-in-docker${_workload_resource_id:+-${_workload_resource_id}}}"
-_docker_in_docker_base_image="${NSCELL_CI_DOCKER_IN_DOCKER_BASE_IMAGE:-ghcr.io/lwmacct/250210-cr-docker:latest}"
+_docker_in_docker_base_image="${NSCELL_CI_DOCKER_IN_DOCKER_BASE_IMAGE:-docker.io/library/docker:29.6.2-dind}"
 _docker_in_docker_image="${NSCELL_CI_DOCKER_IN_DOCKER_IMAGE:-$(__image_tag nscell-ci/docker-in-docker latest)}"
 
 _container_security_policy_name="${NSCELL_CI_CONTAINER_SECURITY_POLICY_NAME:-nscell-container-security-policy${_workload_resource_id:+-${_workload_resource_id}}}"
@@ -59,9 +59,7 @@ _kubernetes_k3s_pause_image="${NSCELL_CI_KUBERNETES_K3S_PAUSE_IMAGE:-docker.io/r
 _kubernetes_k3s_pod_name="${NSCELL_CI_KUBERNETES_K3S_POD_NAME:-nscell-kubernetes-k3s-nginx${_workload_resource_id:+-${_workload_resource_id}}}"
 
 _systemd_pid1_name="${NSCELL_CI_SYSTEMD_PID1_NAME:-nscell-systemd-pid1${_workload_resource_id:+-${_workload_resource_id}}}"
-_systemd_pid1_unit="${NSCELL_CI_SYSTEMD_PID1_UNIT:-nscell-ci-systemd-pid1${_workload_resource_id:+-${_workload_resource_id}}}"
-_systemd_pid1_base_image="${NSCELL_CI_SYSTEMD_PID1_BASE_IMAGE:-docker.io/library/ubuntu:24.04}"
-_systemd_pid1_image="${NSCELL_CI_SYSTEMD_PID1_IMAGE:-$(__image_tag nscell-ci/systemd-pid1 latest)}"
+_systemd_pid1_image="${NSCELL_CI_SYSTEMD_PID1_IMAGE:-ghcr.io/lwmacct/260522-nscell-ci:systemd-pid1-latest}"
 
 _procfs_memory_name="${NSCELL_CI_PROCFS_MEMORY_NAME:-nscell-procfs-memory${_workload_resource_id:+-${_workload_resource_id}}}"
 _procfs_memory_base_image="${NSCELL_CI_PROCFS_MEMORY_BASE_IMAGE:-docker.io/library/python:3.12-alpine}"

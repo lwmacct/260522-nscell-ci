@@ -50,6 +50,7 @@ services:
       - ${_root}/docker/certs:/certs
     environment:
       - TZ=Asia/Shanghai
+      - DOCKER_TLS_CERTDIR=
 networks:
   ${_docker_in_docker_network}:
     external: true
