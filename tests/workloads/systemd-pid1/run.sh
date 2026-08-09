@@ -75,12 +75,12 @@ __main() {
 		"$_systemd_pid1_image" >/dev/null
 
 	__wait_for_container "$_systemd_pid1_name"
-	docker cp \
-		"${_workload_path}/probe.sh" \
-		"${_systemd_pid1_name}:/usr/local/bin/nscell-ci-systemd-pid1-probe"
-	docker cp \
-		"${_workload_path}/probe.service" \
-		"${_systemd_pid1_name}:/etc/systemd/system/nscell-ci-probe.service"
+	docker exec -i "$_systemd_pid1_name" sh -c \
+		'cat > /usr/local/bin/nscell-ci-systemd-pid1-probe' < \
+		"${_workload_path}/probe.sh"
+	docker exec -i "$_systemd_pid1_name" sh -c \
+		'cat > /etc/systemd/system/nscell-ci-probe.service' < \
+		"${_workload_path}/probe.service"
 	docker exec "$_systemd_pid1_name" sh -lc '
 		set -eu
 		chmod 0755 /usr/local/bin/nscell-ci-systemd-pid1-probe
