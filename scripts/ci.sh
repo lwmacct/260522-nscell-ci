@@ -32,6 +32,27 @@ __require_cmd() {
   fi
 }
 
+__retry() {
+  local _max_attempts="$1"
+  shift
+  local _attempt=1
+  local _status
+
+  while true; do
+    if "$@"; then
+      return 0
+    else
+      _status=$?
+    fi
+    if ((_attempt >= _max_attempts)); then
+      return "$_status"
+    fi
+    __log "${1} failed with ${_status}; retrying ($((_attempt + 1))/${_max_attempts})"
+    sleep $((_attempt * 5))
+    _attempt=$((_attempt + 1))
+  done
+}
+
 __install_dependencies() {
   sudo apt-get update
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -84,6 +105,22 @@ __image_repo() {
   printf '%s' "$_repo"
 }
 
+__fetch_manifest() {
+  local _manifest="$1"
+  local _image="$2"
+
+  rm -f "$_manifest"
+  oras manifest fetch --platform "$_target_platform" --output "$_manifest" "$_image"
+}
+
+__fetch_blob() {
+  local _layer="$1"
+  local _ref="$2"
+
+  rm -f "$_layer"
+  oras blob fetch --no-tty --output "$_layer" "$_ref"
+}
+
 __extract_nscell_binary_from_image() {
   local _dest="$1"
   local _work_dir _manifest _repo _digest _layer _i
@@ -93,7 +130,7 @@ __extract_nscell_binary_from_image() {
   _repo="$(__image_repo "$_nscell_image")"
 
   __log "fetching ${_target_platform} manifest from ${_nscell_image}"
-  oras manifest fetch --platform "$_target_platform" --output "$_manifest" "$_nscell_image"
+  __retry 3 __fetch_manifest "$_manifest" "$_nscell_image"
 
   mkdir -p "${_work_dir}/rootfs" "${_work_dir}/layers"
   _i=0
@@ -102,7 +139,7 @@ __extract_nscell_binary_from_image() {
     _i=$((_i + 1))
     _layer="${_work_dir}/layers/${_i}.tar"
     __log "fetching layer ${_i}: ${_digest}"
-    oras blob fetch --no-tty --output "$_layer" "${_repo}@${_digest}"
+    __retry 3 __fetch_blob "$_layer" "${_repo}@${_digest}"
     tar -xf "$_layer" -C "${_work_dir}/rootfs"
   done < <(jq -r '.layers[].digest' "$_manifest")
 
