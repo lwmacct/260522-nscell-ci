@@ -26,6 +26,11 @@ is the single catalog for host and VM availability, the `smoke`, `gate`, and
 services, logs, and artifact. A manual run can use `targets` to override its
 selected suite and isolate one or more workloads.
 
+Runtime host setup starts from a clean daemon state by default. Storage crash
+recovery tests decode the checksummed `/var/lib/nscell/state/events.log`
+snapshots directly, so they validate the daemon's actual recovery state instead
+of relying on legacy per-domain JSON files.
+
 The expensive Ubuntu 24.04 systemd environment is published separately as
 `ghcr.io/lwmacct/260522-nscell-ci:systemd-pid1-latest`. Only the
 `systemd-pid1` workload pulls it, on demand. The probe script and systemd unit

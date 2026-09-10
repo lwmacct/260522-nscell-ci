@@ -15,6 +15,7 @@ _target_platform="${NSCELL_IMAGE_PLATFORM:-linux/amd64}"
 _release_root="${NSCELL_RELEASE_ROOT:-/opt/nscell/releases}"
 _current_link="${NSCELL_CURRENT_LINK:-/opt/nscell/current}"
 _daemon_log="${NSCELL_DAEMON_LOG:-/var/log/nscell-daemon.log}"
+_reset_daemon_state="${NSCELL_CI_RESET_DAEMON_STATE:-1}"
 _run_id="${NSCELL_WORKLOAD_RUN_ID:-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}}"
 _resource_id="$(printf '%s' "$_run_id" | tr -c '[:alnum:]_.-' '-')"
 _resource_id="${_resource_id:0:32}"
@@ -36,6 +37,7 @@ __install_dependencies() {
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     jq \
     libseccomp2 \
+    python3 \
     util-linux
 }
 
@@ -54,6 +56,7 @@ __setup_runtime_host() {
   __require_cmd docker
   __require_cmd systemctl
   __require_cmd jq
+  __require_cmd python3
   __require_cmd oras
 
   __init_ci_dirs
@@ -215,6 +218,17 @@ __restart_nscell_services() {
   done < <(awk '$0 ~ / - fuse nscellfs / && $5 ~ /^\/var\/lib\/nscellfs\// {print $5}' /proc/self/mountinfo)
   sudo rm -f /run/nscell/daemon.sock /run/nscell/daemon.pid
   sudo rm -rf /run/nscell/containers
+  case "$_reset_daemon_state" in
+  0 | 1) ;;
+  *)
+    echo "unsupported NSCELL_CI_RESET_DAEMON_STATE: $_reset_daemon_state" >&2
+    exit 2
+    ;;
+  esac
+  if ((_reset_daemon_state)); then
+    __log "resetting daemon state and managed-volume roots"
+    sudo rm -rf /var/lib/nscell/state /var/lib/nscell/work /run/nscell/runtime
+  fi
   if sudo test -d /var/lib/nscellfs; then
     sudo find /var/lib/nscellfs -mindepth 1 -maxdepth 1 -xdev -exec rm -rf -- {} + 2>/dev/null || true
   fi

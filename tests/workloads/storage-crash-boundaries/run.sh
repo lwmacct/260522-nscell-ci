@@ -12,6 +12,7 @@ cd "$_repo_root"
 source "${_workload_dir}/library/env.sh"
 source "${_workload_dir}/library/readiness.sh"
 source "${_workload_dir}/library/images.sh"
+source "${_workload_dir}/library/state.sh"
 source "${_workload_dir}/library/oci.sh"
 
 _state_root="/run/nscell-ci-storage-crash-boundaries"
@@ -146,20 +147,10 @@ __wait_for_crash_trigger() {
   return 1
 }
 
-__assert_json_map_lacks_id() {
-  local _path="$1"
-  local _map="$2"
-  local _id="$3"
-
-  sudo test -f "$_path"
-  sudo jq -e --arg _id "$_id" --arg _map "$_map" \
-    '(.[$_map] // {}) | has($_id) | not' "$_path" >/dev/null
-}
-
 __assert_recovery_clean() {
   local _id="$1"
   local _container_pid="${2:-}"
-  local _root _journal_name _journal
+  local _root _volume_name
 
   if [[ -n "$_container_pid" ]]; then
     __wait_for_pid_exit "$_container_pid" "orphaned container init"
@@ -179,13 +170,12 @@ __assert_recovery_clean() {
       return 1
     fi
   done
-  for _journal_name in buildkit containerd docker k0s kubelet rancher-k3s rancher-rke2; do
-    _journal="/var/lib/nscell/state/volumes/${_journal_name}.json"
-    sudo test -e "$_journal" || continue
-    __assert_json_map_lacks_id "$_journal" volumes "$_id"
+  __assert_nscell_state_store
+  for _volume_name in buildkit containerd docker k0s kubelet rancher-k3s rancher-rke2; do
+    __assert_state_map_lacks_id volume "$_volume_name" volumes "$_id"
   done
-  __assert_json_map_lacks_id /var/lib/nscell/state/leases.json leases "$_id"
-  __assert_json_map_lacks_id /var/lib/nscell/state/subids.json allocations "$_id"
+  __assert_state_map_lacks_id leases control-plane leases "$_id"
+  __assert_state_map_lacks_id subid allocator allocations "$_id"
   sudo nscell daemon status |
     jq -e --arg _id "$_id" \
       'all(.sessions[]?; .id != $_id) and all(.resourceLeases[]?; .id != $_id)' >/dev/null
@@ -243,9 +233,10 @@ __assert_sync_in_recovery() {
     return 1
   fi
   sudo test ! -e "${_backing}/untouched.txt"
-  sudo jq -e --arg _id "$_storage_crash_sync_in_id" \
+  __nscell_state_snapshot volume docker |
+    jq -e --arg _id "$_storage_crash_sync_in_id" \
     '.volumes[$_id].phase == "creating"' \
-    /var/lib/nscell/state/volumes/docker.json >/dev/null
+    >/dev/null
 
   __log "restarting and discarding the incomplete SyncIn backing"
   __start_daemon
@@ -302,9 +293,10 @@ __assert_sync_out_recovery() {
     echo "SyncOut source backing lost container data before recovery" >&2
     return 1
   fi
-  sudo jq -e --arg _id "$_storage_crash_sync_out_id" \
+  __nscell_state_snapshot volume docker |
+    jq -e --arg _id "$_storage_crash_sync_out_id" \
     '.volumes[$_id].phase == "active"' \
-    /var/lib/nscell/state/volumes/docker.json >/dev/null
+    >/dev/null
 
   __log "restarting and replaying the incomplete SyncOut"
   __start_daemon
