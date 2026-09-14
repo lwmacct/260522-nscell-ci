@@ -58,3 +58,13 @@ jobs:
       nscell_image: ${{ inputs.nscell_image }}
       suite: ${{ inputs.vm_suite }}
     secrets: inherit
+
+  vm-floor:
+    name: VM Linux 6.12 floor
+    uses: ./.github/workflows/test-vm.yml
+    with:
+      image_name: linux-6-12
+      nscell_image: ${{ inputs.nscell_image }}
+      suite: smoke
+      targets: kernel-capability-smoke
+    secrets: inherit

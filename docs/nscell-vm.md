@@ -1,15 +1,21 @@
-# NSCell Ubuntu VM validation
+# NSCell VM validation
 
-This repository owns a dedicated Ubuntu 24.04 AMD64 Incus VM image for NSCell
-runtime validation. The image is built with `distrobuilder`, while the runner
-installs Incus from the signed Zabbly source at `pkgs.zabbly.com`.
+This repository owns dedicated AMD64 Incus VM images for NSCell runtime
+validation. The images are built with `distrobuilder`, while the runner installs
+Incus from the signed Zabbly source at `pkgs.zabbly.com`.
 
-The first image profile is `images/standard.yaml`. It contains the Incus VM
-agent, the Docker runtime stack, FUSE and idmap utilities, diagnostics, and a
-guest GRUB command line that enables the BPF LSM. It does not contain an
-NSCell binary; each test workflow accepts an nscell OCI image, extracts its
-AMD64 binary on the GitHub runner, and exposes it to a disposable VM through a
-read-only Incus disk share.
+Two profiles are maintained:
+
+- `images/standard.yaml` is Ubuntu 24.04 with the current HWE virtual kernel.
+  It provides broad current-kernel workload coverage.
+- `images/linux-6-12.yaml` is Debian 13 with the stable 6.12 kernel. It is the
+  exact floor gate and is used for `kernel-capability-smoke`.
+
+Both contain the Incus VM agent, the Docker runtime stack, FUSE and idmap
+utilities, diagnostics, and a guest GRUB command line that enables the BPF LSM.
+They do not contain an NSCell binary; each test workflow accepts an nscell OCI
+image, extracts its AMD64 binary on the GitHub runner, and exposes it to a
+disposable VM through a read-only Incus disk share.
 
 The image workflow publishes a commit-addressed candidate such as:
 
@@ -17,16 +23,16 @@ The image workflow publishes a commit-addressed candidate such as:
 ghcr.io/lwmacct/260522-nscell-ci:artifact-images-standard-sha-<12-char-commit>
 ```
 
-The stable profile tag is
-`ghcr.io/lwmacct/260522-nscell-ci:artifact-images-standard`. A successful
-build publishes the commit-addressed tag and updates this stable tag.
+Each profile uses the same pattern and publishes a stable
+`artifact-images-<profile>` tag. A successful build publishes the
+commit-addressed tag and updates that profile's stable tag.
 
 GHCR artifacts are imported into Incus with ORAS before the VM is started.
 The artifact contains `incus.tar.xz`, `disk.qcow2`, and `SHA256SUMS`.
 
 ## Workflows
 
-- `Build VM standard` runs on profile changes or manually. It builds each
+- `Build VM images` runs on profile changes or manually. It builds each
   selected profile, checks the qcow2 file, and publishes commit-addressed and
   stable tags without starting a guest.
 - `Test workloads in VM` is the manual VM coverage entry point. Each selected
@@ -38,6 +44,8 @@ The artifact contains `incus.tar.xz`, `disk.qcow2`, and `SHA256SUMS`.
   paying the nested VM startup cost.
 - The special `smoke` target checks BPF LSM, nscell daemon readiness, Docker
   runtime registration, and one `busybox` container.
+- Release validation also runs `kernel-capability-smoke` on the Debian 6.12
+  floor profile. A current-kernel standard VM run cannot replace that gate.
 
 Both test workflows accept `nscell_image`. The nscell release workflow passes
 an immutable digest and waits for their results, while manual runs can select

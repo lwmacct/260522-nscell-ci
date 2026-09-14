@@ -152,3 +152,17 @@ jobs:
       nscell_image: ${{ needs.changes.outputs.nscell_image }}
       suite: smoke
     secrets: inherit
+
+  vm-floor-smoke:
+    name: VM Linux 6.12 floor smoke
+    needs:
+      - static
+      - changes
+    if: needs.changes.outputs.runtime == 'true'
+    uses: ./.github/workflows/test-vm.yml
+    with:
+      image_name: linux-6-12
+      nscell_image: ${{ needs.changes.outputs.nscell_image }}
+      suite: smoke
+      targets: kernel-capability-smoke
+    secrets: inherit
