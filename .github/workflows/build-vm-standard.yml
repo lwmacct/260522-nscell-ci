@@ -1,4 +1,4 @@
-name: Build VM standard
+name: Build VM images
 
 on:
   push:
@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-vm-standard-${{ github.ref }}
+  group: build-vm-images-${{ github.ref }}
   cancel-in-progress: false
 
 defaults:
@@ -33,7 +33,6 @@ env:
   DISTROBUILDER_VERSION: 3.3.1
   DISTROBUILDER_CACHE_VERSION: 1
   ORAS_VERSION: 1.3.3
-  RELEASE: noble
   ARCHITECTURE: amd64
   VARIANT: default
 
@@ -124,7 +123,7 @@ jobs:
           __main "$@"
 
   build:
-    name: ${{ matrix.image }} / Ubuntu 24.04 / AMD64
+    name: ${{ matrix.image }} / VM / AMD64
     needs: prepare
     runs-on: ubuntu-24.04
     timeout-minutes: 150
@@ -252,12 +251,26 @@ jobs:
       - name: Build Incus VM image
         run: |
           __main() {
-            local _serial
+            local _description _release _serial
 
             set -euo pipefail
             _serial="$(date -u +%Y%m%d_%H%M)"
             echo "SERIAL=${_serial}" >> "${GITHUB_ENV}"
             sudo install -d -m 0755 "${RUNNER_TEMP}/${OUTPUT_DIR_NAME}"
+            case "${IMAGE_NAME}" in
+              standard)
+                _release="noble"
+                _description="Test VM ${IMAGE_NAME}: Ubuntu 24.04 AMD64"
+                ;;
+              linux-6-12)
+                _release="trixie"
+                _description="Test VM ${IMAGE_NAME}: Debian 13 / Linux 6.12 AMD64"
+                ;;
+              *)
+                echo "unsupported image profile: ${IMAGE_NAME}" >&2
+                return 2
+                ;;
+            esac
             sudo distrobuilder build-incus \
               "${IMAGE_DEFINITION}" \
               "${RUNNER_TEMP}/${OUTPUT_DIR_NAME}" \
@@ -266,11 +279,10 @@ jobs:
               --vm \
               --timeout=5400 \
               -o image.architecture="${ARCHITECTURE}" \
-              -o image.release="${RELEASE}" \
+              -o image.release="${_release}" \
               -o image.variant="${VARIANT}" \
-              -o image.description="Test VM ${IMAGE_NAME}: Ubuntu 24.04 AMD64" \
-              -o image.serial="${_serial}" \
-              -o source.url="http://archive.ubuntu.com/ubuntu/"
+              -o image.description="${_description}" \
+              -o image.serial="${_serial}"
             sudo chown -R "$(id -u):$(id -g)" \
               "${RUNNER_TEMP}/${OUTPUT_DIR_NAME}"
           }
@@ -308,9 +320,21 @@ jobs:
           ORAS_CHECKSUM_TYPE: text/plain
         run: |
           __main() {
-            local _digest _full_sha _revision_tag _short_sha _stable_tag
+            local _description _digest _full_sha _revision_tag _short_sha _stable_tag
 
             set -euo pipefail
+            case "${IMAGE_NAME}" in
+              standard)
+                _description="Test VM ${IMAGE_NAME}: Ubuntu 24.04 AMD64"
+                ;;
+              linux-6-12)
+                _description="Test VM ${IMAGE_NAME}: Debian 13 / Linux 6.12 AMD64"
+                ;;
+              *)
+                echo "unsupported image profile: ${IMAGE_NAME}" >&2
+                return 2
+                ;;
+            esac
             _full_sha="$(git rev-parse HEAD)"
             _short_sha="${_full_sha:0:12}"
             _revision_tag="artifact-images-${IMAGE_NAME}-sha-${_short_sha}"
@@ -322,7 +346,7 @@ jobs:
                 --annotation "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
                 --annotation "org.opencontainers.image.revision=${_full_sha}" \
                 --annotation "org.opencontainers.image.version=${SERIAL}" \
-                --annotation "org.opencontainers.image.description=Test VM ${IMAGE_NAME}: Ubuntu 24.04 AMD64" \
+                --annotation "org.opencontainers.image.description=${_description}" \
                 --annotation "io.github.lwmacct.image.profile=${IMAGE_NAME}" \
                 "${OCI_REPOSITORY}:${_revision_tag}" \
                 "incus.tar.xz:${ORAS_METADATA_TYPE}" \
