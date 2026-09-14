@@ -68,7 +68,8 @@ syscall(
     ctypes.c_uint(STATX_MNT_ID_UNIQUE),
     statx,
 )
-mask, mount_id = struct.unpack_from("=IQ", statx, 0)
+mask = struct.unpack_from("=I", statx, 0)[0]
+mount_id = struct.unpack_from("=Q", statx, 144)[0]
 if not mask & STATX_MNT_ID_UNIQUE or mount_id == 0:
     raise SystemExit(f"STATX_MNT_ID_UNIQUE unavailable: mask={mask:#x} mount_id={mount_id}")
 
