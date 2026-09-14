@@ -11,6 +11,7 @@ cd "$_repo_root"
 
 source "${_workload_dir}/library/env.sh"
 source "${_workload_dir}/library/readiness.sh"
+source "${_workload_dir}/library/diagnostics.sh"
 source "${_workload_dir}/library/images.sh"
 
 __cleanup() {
