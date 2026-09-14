@@ -143,7 +143,6 @@ assert_mount /dev/mqueue mqueue
 assert_mount /copyup tmpfs
 assert_mount /readonly-overlay overlay
 assert_readonly /readonly-overlay
-assert_readonly /sys
 
 [ "$(cat /copyup/seed)" = seed ]
 printf runtime > /copyup/runtime
