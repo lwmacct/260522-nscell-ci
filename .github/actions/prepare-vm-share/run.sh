@@ -5,8 +5,8 @@ set -euo pipefail
 _ci_repo="${CI_REPO:?CI_REPO is required}"
 _test_target="${TEST_TARGET:?TEST_TARGET is required}"
 _run_id="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}-${_test_target}"
-_resource_id="$(printf '%s' "${_run_id}" | tr -c '[:alnum:]_.-' '-')"
-_resource_id="${_resource_id:0:32}"
+_resource_hash="$(printf '%s' "${_run_id}" | sha256sum | cut -d ' ' -f1)"
+_resource_id="run-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}-${_resource_hash:0:16}"
 _share_dir="${RUNNER_TEMP:-/tmp}/test-vm-share-${_resource_id}"
 
 __main() {

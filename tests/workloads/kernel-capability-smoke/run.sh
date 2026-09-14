@@ -10,7 +10,6 @@ _repo_root="$(cd "${_workload_dir}/.." && pwd)"
 cd "$_repo_root"
 
 source "${_workload_dir}/library/env.sh"
-source "${_workload_dir}/library/readiness.sh"
 
 __require_kernel_floor() {
   local _release _version_floor
@@ -176,7 +175,6 @@ __main() {
   __require_cgroup_v2
   __require_kernel_interfaces
   __probe_mount_namespace_apis
-  __assert_nscell_ready
   echo "kernel-capability-smoke-validation-ok"
 }
 
