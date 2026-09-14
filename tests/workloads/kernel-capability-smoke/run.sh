@@ -122,7 +122,7 @@ syscall(
 statmount_size = struct.unpack_from("=I", statmount_buffer, 0)[0]
 returned_mask = struct.unpack_from("=Q", statmount_buffer, 8)[0]
 returned_mount_id = struct.unpack_from("=Q", statmount_buffer, 40)[0]
-namespace_id = struct.unpack_from("=Q", statmount_buffer, 104)[0]
+namespace_id = struct.unpack_from("=Q", statmount_buffer, 112)[0]
 required_mask = STATMOUNT_MNT_BASIC | STATMOUNT_MNT_NS_ID
 if returned_mask & required_mask != required_mask:
     raise SystemExit(f"statmount fields unavailable: mask={returned_mask:#x}")
