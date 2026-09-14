@@ -144,7 +144,7 @@ count = syscall(
     458,
     ctypes.byref(request),
     mount_ids,
-    ctypes.c_sizeof(len(mount_ids)),
+    ctypes.c_size_t(len(mount_ids)),
     0,
 )
 if count <= 0 or mount_ids[0] == 0:

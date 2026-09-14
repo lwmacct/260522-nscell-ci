@@ -328,8 +328,7 @@ __run_workload() {
     exit 2
   fi
 
-  __assert_nscell_ready
-  export NSCELL_CI_TEST_ROOT="$_test_root"
+	export NSCELL_CI_TEST_ROOT="$_test_root"
   export NSCELL_CI_IMAGE_CACHE_DIR="$_image_cache_dir"
   export NSCELL_CI_LOG_ROOT="${_test_root}/runs/${_resource_id}/logs"
   export NSCELL_WORKLOAD_RUN_ID="$_resource_id"
