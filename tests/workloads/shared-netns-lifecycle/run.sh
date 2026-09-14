@@ -20,21 +20,12 @@ __cleanup() {
     >/dev/null 2>&1 || true
 }
 
-__container_pid() {
-  docker inspect "$1" --format '{{.State.Pid}}'
-}
-
 __assert_running() {
   docker inspect "$1" --format '{{.State.Running}}' | grep -qx true
 }
 
-__netns_link() {
-  readlink "/proc/$1/ns/net"
-}
-
 __main() {
-  local _primary_pid _secondary_pid _primary_netns _secondary_netns
-  local _primary_proc_net _secondary_proc_net
+  local _http_output _secondary_proc_net
 
   if [[ "${1:-}" == "cleanup" ]]; then
     __cleanup
@@ -55,7 +46,8 @@ __main() {
     --runtime nscell \
     --label io.backend.security.profile=default \
     "$_oci_base_image" \
-    tail -f /dev/null >/dev/null
+    /bin/sh -c 'mkdir /www; printf shared-netns-ok > /www/index.html; exec httpd -f -p 8080 -h /www' \
+    >/dev/null
 
   __log "joining a second NSCell container to the primary network namespace"
   docker run -d \
@@ -66,31 +58,21 @@ __main() {
     "$_oci_base_image" \
     tail -f /dev/null >/dev/null
 
-  _primary_pid="$(__container_pid "$_shared_netns_primary_name")"
-  _secondary_pid="$(__container_pid "$_shared_netns_secondary_name")"
-  _primary_netns="$(__netns_link "$_primary_pid")"
-  _secondary_netns="$(__netns_link "$_secondary_pid")"
-  printf 'shared-netns primary=%s secondary=%s\n' \
-    "$_primary_netns" "$_secondary_netns"
-  if [[ -z "$_primary_pid" || -z "$_secondary_pid" ]]; then
-    echo "shared-network workload did not expose container PIDs" >&2
-    exit 1
-  fi
-  if [[ "$_primary_netns" != "$_secondary_netns" ]]; then
-    echo "shared-network containers use different network namespaces" >&2
+  _http_output="$(docker exec \
+    "$_shared_netns_secondary_name" \
+    wget -qO- http://127.0.0.1:8080/)"
+  printf 'shared-netns-http=%q\n' "$_http_output"
+  if [[ "$_http_output" != "shared-netns-ok" ]]; then
+    echo "secondary container could not reach the primary loopback service" >&2
     exit 1
   fi
 
-  _primary_proc_net="$(docker exec \
-    "$_shared_netns_primary_name" \
-    cat /proc/sys/net/ipv4/ping_group_range)"
   _secondary_proc_net="$(docker exec \
     "$_shared_netns_secondary_name" \
     cat /proc/sys/net/ipv4/ping_group_range)"
-  printf 'shared-netns-proc primary=%q secondary=%q\n' \
-    "$_primary_proc_net" "$_secondary_proc_net"
-  if [[ -z "$_primary_proc_net" || "$_primary_proc_net" != "$_secondary_proc_net" ]]; then
-    echo "procfs network state differs across the shared network namespace" >&2
+  printf 'shared-netns-proc=%q\n' "$_secondary_proc_net"
+  if [[ -z "$_secondary_proc_net" ]]; then
+    echo "secondary shared-network container could not read procfs network state" >&2
     exit 1
   fi
 

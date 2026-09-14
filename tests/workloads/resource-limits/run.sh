@@ -63,6 +63,24 @@ EOF
   sudo chmod 0755 "${_bundle}/rootfs/probe.sh"
 }
 
+__wait_for_stopped() {
+  local _deadline=$((SECONDS + 20))
+  local _actual=""
+
+  while ((SECONDS <= _deadline)); do
+    _actual="$(sudo nscell --root "$_oci_runtime_root" state \
+      "$_resource_limits_id" 2>/dev/null |
+      jq -r '.status // empty' || true)"
+    if [[ "$_actual" == "stopped" ]]; then
+      return 0
+    fi
+    sleep 0.2
+  done
+
+  echo "resource limit container did not stop; last state: ${_actual:-unavailable}" >&2
+  return 1
+}
+
 __main() {
   local _probe_output
 
@@ -101,6 +119,7 @@ resource-limits-probe-ok" ]]; then
   fi
 
   sudo nscell --root "$_oci_runtime_root" kill "$_resource_limits_id" TERM
+  __wait_for_stopped
   sudo nscell --root "$_oci_runtime_root" delete "$_resource_limits_id"
   __assert_nscell_ready
 
