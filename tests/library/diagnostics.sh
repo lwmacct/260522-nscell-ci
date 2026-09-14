@@ -18,7 +18,7 @@ __dump_debug() {
   fi
 
   echo "nscell runtime validation failed with exit code $_code" >&2
-  for _name in "$_docker_in_docker_name" "$_kubernetes_k3s_name" "$_systemd_pid1_name" "$_procfs_memory_name" "$_procfs_cpu_name" "$_seccomp_notify_concurrency_name" "${_container_security_policy_name}-default" "${_container_security_policy_name}-dind" "${_container_security_policy_name}-k8s-node"; do
+  for _name in "$_docker_in_docker_name" "$_kubernetes_k3s_name" "$_systemd_pid1_name" "$_procfs_memory_name" "$_procfs_cpu_name" "$_seccomp_notify_concurrency_name" "${_container_security_policy_name}-default" "${_container_security_policy_name}-dind" "${_container_security_policy_name}-k8s-node" "$_shared_netns_primary_name" "$_shared_netns_secondary_name"; do
     __container_logs "$_name"
   done
   systemctl --no-pager --full status nscell-daemon.service docker.service 2>&1 |

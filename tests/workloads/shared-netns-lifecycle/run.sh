@@ -49,6 +49,12 @@ __main() {
     /bin/sh -c 'mkdir /www; printf shared-netns-ok > /www/index.html; exec httpd -f -p 8080 -h /www' \
     >/dev/null
 
+  if ! __assert_running "$_shared_netns_primary_name"; then
+    __container_logs "$_shared_netns_primary_name"
+    echo "shared network namespace primary container exited before validation" >&2
+    exit 1
+  fi
+
   __log "joining a second NSCell container to the primary network namespace"
   docker run -d \
     --name "$_shared_netns_secondary_name" \
