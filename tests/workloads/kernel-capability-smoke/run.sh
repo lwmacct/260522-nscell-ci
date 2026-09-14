@@ -32,8 +32,6 @@ __require_cgroup_v2() {
 
 __require_kernel_interfaces() {
   test -c /dev/fuse
-  test -r /sys/kernel/btf/vmlinux
-  grep -qw bpf /sys/kernel/security/lsm
 }
 
 __probe_mount_namespace_apis() {
