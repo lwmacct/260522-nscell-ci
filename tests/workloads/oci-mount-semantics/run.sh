@@ -157,7 +157,7 @@ EOF
 }
 
 __main() {
-  local _probe_output
+  local _probe_log _probe_rc
 
   if [[ "${1:-}" == "cleanup" ]]; then
     __cleanup
@@ -185,10 +185,15 @@ __main() {
     --pid-file "${_bundle}/init.pid" \
     "$_oci_mount_semantics_id"
   sudo nscell --root "$_oci_runtime_root" start "$_oci_mount_semantics_id"
-  _probe_output="$(sudo nscell --root "$_oci_runtime_root" exec \
-    "$_oci_mount_semantics_id" /probe.sh)"
-  printf '%s\n' "$_probe_output"
-  if [[ "$_probe_output" != "oci-mount-semantics-probe-ok" ]]; then
+  _probe_log="${_log_root}/oci-mount-probe.log"
+  set +e
+  sudo nscell --root "$_oci_runtime_root" exec \
+    "$_oci_mount_semantics_id" \
+    /bin/sh -x /probe.sh | tee "$_probe_log"
+  _probe_rc="${PIPESTATUS[0]}"
+  set -e
+  if [[ "$_probe_rc" -ne 0 ]] ||
+    ! grep -qx 'oci-mount-semantics-probe-ok' "$_probe_log"; then
     echo "unexpected OCI mount probe output" >&2
     exit 1
   fi
