@@ -120,6 +120,12 @@ assert_mount() {
   ' /proc/self/mountinfo
 }
 
+assert_mountpoint() {
+  mountpoint="$1"
+  awk -v target="$mountpoint" '$5 == target { found = 1 } END { exit !found }' \
+    /proc/self/mountinfo
+}
+
 assert_readonly() {
   mountpoint="$1"
   awk -v target="$mountpoint" '
@@ -130,7 +136,8 @@ assert_readonly() {
 
 assert_mount /proc proc
 assert_mount /sys sysfs
-assert_mount /sys/fs/cgroup cgroup2
+assert_mountpoint /sys/fs/cgroup
+test -r /sys/fs/cgroup/cgroup.controllers
 assert_mount /dev tmpfs
 assert_mount /dev/mqueue mqueue
 assert_mount /copyup tmpfs
