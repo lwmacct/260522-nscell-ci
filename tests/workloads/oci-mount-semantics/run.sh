@@ -120,6 +120,24 @@ assert_mount() {
   ' /proc/self/mountinfo
 }
 
+__wait_for_stopped() {
+  local _deadline=$((SECONDS + 20))
+  local _actual=""
+
+  while ((SECONDS <= _deadline)); do
+    _actual="$(sudo nscell --root "$_oci_runtime_root" state \
+      "$_oci_mount_semantics_id" 2>/dev/null |
+      jq -r '.status // empty' || true)"
+    if [[ "$_actual" == "stopped" ]]; then
+      return 0
+    fi
+    sleep 0.2
+  done
+
+  echo "OCI mount container did not stop; last state: ${_actual:-unavailable}" >&2
+  return 1
+}
+
 assert_mountpoint() {
   mountpoint="$1"
   awk -v target="$mountpoint" '$5 == target { found = 1 } END { exit !found }' \
@@ -209,6 +227,7 @@ __main() {
   fi
 
   sudo nscell --root "$_oci_runtime_root" kill "$_oci_mount_semantics_id" TERM
+  __wait_for_stopped
   sudo nscell --root "$_oci_runtime_root" delete "$_oci_mount_semantics_id"
   __assert_nscell_ready
 
