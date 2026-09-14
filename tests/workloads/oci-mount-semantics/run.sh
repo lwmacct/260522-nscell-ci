@@ -31,6 +31,7 @@ __prepare_rootfs() {
     "${_root}/bind-base" \
     "${_root}/bind-external" \
     "${_root}/bind-under" \
+    "${_root}/bind-base/shm/under" \
     "${_root}/overlay-lower" \
     "${_root}/overlay-upper" \
     "${_root}/overlay-work/work" \
