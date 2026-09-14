@@ -31,13 +31,14 @@ __prepare_rootfs() {
     "${_root}/bind-base" \
     "${_root}/bind-external" \
     "${_root}/bind-under" \
+    "${_root}/overlay-lower" \
     "${_rootfs}/copyup" \
     "${_rootfs}/lower" \
     "${_rootfs}/mnt" \
     "${_rootfs}/mnt/run" \
     "${_rootfs}/shm-target"
   printf '%s\n' seed | sudo tee "${_rootfs}/copyup/seed" >/dev/null
-  printf '%s\n' lower-file | sudo tee "${_rootfs}/lower/lower-file" >/dev/null
+  printf '%s\n' lower-file | sudo tee "${_root}/overlay-lower/lower-file" >/dev/null
   printf '%s\n' bind-base | sudo tee "${_root}/bind-base/bind-base-file" >/dev/null
   printf '%s\n' bind-external | sudo tee "${_root}/bind-external/bind-external-file" >/dev/null
   printf '%s\n' bind-under | sudo tee "${_root}/bind-under/bind-under-file" >/dev/null
@@ -51,7 +52,7 @@ __configure_mounts() {
   _config_tmp="$(mktemp)"
   # shellcheck disable=SC2024 # The temporary output file is owned by the caller.
   sudo jq \
-    --arg _lowerdir "${_bundle}/rootfs/lower" \
+    --arg _lowerdir "${_root}/overlay-lower" \
     --arg _bind_base "${_root}/bind-base" \
     --arg _bind_external "${_root}/bind-external" \
     --arg _bind_under "${_root}/bind-under" \
