@@ -32,6 +32,8 @@ __prepare_rootfs() {
     "${_root}/bind-external" \
     "${_root}/bind-under" \
     "${_root}/overlay-lower" \
+    "${_root}/overlay-upper" \
+    "${_root}/overlay-work/work" \
     "${_rootfs}/copyup" \
     "${_rootfs}/lower" \
     "${_rootfs}/mnt" \
@@ -53,6 +55,8 @@ __configure_mounts() {
   # shellcheck disable=SC2024 # The temporary output file is owned by the caller.
   sudo jq \
     --arg _lowerdir "${_root}/overlay-lower" \
+    --arg _upperdir "${_root}/overlay-upper" \
+    --arg _workdir "${_root}/overlay-work/work" \
     --arg _bind_base "${_root}/bind-base" \
     --arg _bind_external "${_root}/bind-external" \
     --arg _bind_under "${_root}/bind-under" \
@@ -67,7 +71,15 @@ __configure_mounts() {
         destination: "/readonly-overlay",
         type: "overlay",
         source: "overlay",
-        options: ["lowerdir=" + $_lowerdir, "ro", "nosuid", "nodev", "noexec"]
+        options: [
+          "lowerdir=" + $_lowerdir,
+          "upperdir=" + $_upperdir,
+          "workdir=" + $_workdir,
+          "ro",
+          "nosuid",
+          "nodev",
+          "noexec"
+        ]
       },
       {
         destination: "/mnt/run",
