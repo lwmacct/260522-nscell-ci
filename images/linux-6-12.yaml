@@ -2,12 +2,6 @@
 image:
   distribution: "debian"
 
-simplestream:
-  release_aliases:
-    bookworm: 12
-    trixie: 13
-    forky: 14
-
 source:
   downloader: debootstrap
   same_as: sid
