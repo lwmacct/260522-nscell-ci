@@ -37,17 +37,16 @@ __prepare_rootfs() {
     "${_root}/overlay-upper" \
     "${_root}/overlay-work/work" \
     "${_rootfs}/copyup" \
-    "${_rootfs}/lower" \
+    "${_rootfs}/run" \
     "${_rootfs}/mnt" \
-    "${_rootfs}/mnt/run" \
     "${_rootfs}/shm-target"
   printf '%s\n' seed | sudo tee "${_rootfs}/copyup/seed" >/dev/null
   printf '%s\n' lower-file | sudo tee "${_root}/overlay-lower/lower-file" >/dev/null
   printf '%s\n' bind-base | sudo tee "${_root}/bind-base/bind-base-file" >/dev/null
   printf '%s\n' bind-external | sudo tee "${_root}/bind-external/bind-external-file" >/dev/null
   printf '%s\n' bind-under | sudo tee "${_root}/bind-under/bind-under-file" >/dev/null
-  sudo ln -sfn /mnt/run "${_rootfs}/mnt/alias"
-  sudo ln -sfn /mnt/shm-target "${_rootfs}/mnt/run/shm"
+  sudo ln -sfn /run "${_rootfs}/var/run"
+  sudo ln -sfn /mnt/shm-target "${_rootfs}/run/shm"
 }
 
 __configure_mounts() {
@@ -84,19 +83,19 @@ __configure_mounts() {
         ]
       },
       {
-        destination: "/mnt/run",
+        destination: "/run",
         type: "bind",
         source: $_bind_base,
         options: ["rw", "bind"]
       },
       {
-        destination: "/mnt/alias/external",
+        destination: "/var/run/external",
         type: "bind",
         source: $_bind_external,
         options: ["rw", "bind"]
       },
       {
-        destination: "/mnt/run/shm/under",
+        destination: "/run/shm/under",
         type: "bind",
         source: $_bind_under,
         options: ["rw", "bind"]
@@ -154,9 +153,9 @@ if echo rejected > /readonly-overlay/rejected 2>/dev/null; then
 fi
 [ ! -e /readonly-overlay/rejected ]
 
-[ "$(cat /mnt/run/bind-base-file)" = bind-base ]
-[ "$(cat /mnt/alias/external/bind-external-file)" = bind-external ]
-[ "$(cat /mnt/run/shm/under/bind-under-file)" = bind-under ]
+[ "$(cat /run/bind-base-file)" = bind-base ]
+[ "$(cat /var/run/external/bind-external-file)" = bind-external ]
+[ "$(cat /run/shm/under/bind-under-file)" = bind-under ]
 [ ! -e /shm-target/under ]
 echo oci-mount-semantics-probe-ok
 EOF
