@@ -524,8 +524,10 @@ packages:
     - vm
 
   - packages:
-    - linux-image-virtual
+    - linux-image-virtual-hwe-24.04
     action: install
+    releases:
+    - noble
     types:
     - vm
 
