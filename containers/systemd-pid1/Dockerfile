@@ -57,7 +57,7 @@ __main "$@"
 RUN_EOF
 
 VOLUME ["/sys/fs/cgroup"]
-CMD ["/usr/bin/systemd"]
+CMD ["/usr/lib/systemd/systemd"]
 
 LABEL org.opencontainers.image.source="https://github.com/lwmacct/260522-nscell-ci" \
 	org.opencontainers.image.description="Ubuntu 26.04 systemd PID 1 workload base" \

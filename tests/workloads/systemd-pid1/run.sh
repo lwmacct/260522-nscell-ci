@@ -67,7 +67,7 @@ __main() {
 		--runtime nscell \
 		--cgroupns=private \
 		--label io.backend.security.profile=default \
-		--entrypoint /usr/bin/systemd \
+		--entrypoint /usr/lib/systemd/systemd \
 		--tmpfs /run:rw,nosuid,nodev,mode=755,size=64m \
 		--tmpfs /run/lock:rw,nosuid,nodev,noexec,mode=755,size=16m \
 		--tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=64m \
