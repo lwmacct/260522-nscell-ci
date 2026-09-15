@@ -79,6 +79,7 @@ PY
   _acquire_output="$(docker run --rm -i \
     --name "$_new_mount_api_deny_name" \
     --runtime nscell \
+    --annotation io.backend.security.profile=dind \
     --label io.backend.security.profile=dind \
     "$_container_security_policy_base_image" \
     python3 - <<'PY'
@@ -105,7 +106,8 @@ result = libc.syscall(
 )
 errno = ctypes.get_errno()
 if result == -1:
-    raise SystemExit(f"authorized open_tree failed: errno={errno}", file=sys.stderr)
+    print(f"authorized open_tree failed: errno={errno}", file=sys.stderr)
+    raise SystemExit(1)
 info = os.fstat(result)
 if not stat.S_ISSOCK(info.st_mode):
     raise SystemExit("authorized open_tree exposed a non-proxy descriptor", file=sys.stderr)
