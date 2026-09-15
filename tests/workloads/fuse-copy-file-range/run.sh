@@ -31,6 +31,28 @@ assert after == before
 with open("/result", "w", encoding="ascii") as result:
     result.write(f"fuse-copy-file-range-ok:{count}")
 '
+_copy_program_with_diagnostics='
+import os
+
+path = "/proc/sys/kernel/printk"
+try:
+    before = open(path, "rb").read()
+    source = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
+    destination = os.open(path, os.O_WRONLY | os.O_CLOEXEC)
+    count = os.copy_file_range(source, destination, len(before), 0, 0)
+    after = open(path, "rb").read()
+    assert count == len(before)
+    assert after == before
+    output = f"fuse-copy-file-range-ok:{count}"
+except OSError as error:
+    stat = os.stat(path)
+    output = (
+        f"copy-error:{error.errno}:uids={os.getuid()}:{os.geteuid()}:"
+        f"stat={stat.st_mode:o}:{stat.st_uid}:{stat.st_gid}"
+    )
+with open("/result", "w", encoding="ascii") as result:
+    result.write(output)
+'
 
 __cleanup() {
   __remove_oci_container "$_oci_runtime_root" "$_fuse_copy_file_range_name"
@@ -69,7 +91,7 @@ __main() {
   trap __cleanup EXIT
 
   __cleanup
-  _args="$(jq -cn --arg program "$_copy_program" '["/usr/local/bin/python3","-c",$program]')"
+  _args="$(jq -cn --arg program "$_copy_program_with_diagnostics" '["/usr/local/bin/python3","-c",$program]')"
   __prepare_oci_bundle \
     "$_fuse_copy_file_range_base_image" \
     "$_bundle" \
