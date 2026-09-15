@@ -50,7 +50,7 @@ __run_deny_case() {
     --runtime nscell \
     --annotation "io.backend.security.profile=${_profile}" \
     --label "io.backend.security.profile=${_profile}" \
-    --security-opt systempaths=unmasked \
+    --privileged \
     "$_container_security_policy_base_image" \
     python3 - <<'PY'
 import ctypes
@@ -101,7 +101,7 @@ __run_authorized_case() {
     --runtime nscell \
     --annotation "io.backend.security.profile=${_profile}" \
     --label "io.backend.security.profile=${_profile}" \
-    --security-opt systempaths=unmasked \
+    --privileged \
     --env "CASE_PROFILE=${_profile}" \
     --env "CASE_SOURCE=${_source_path}" \
     --env "CASE_TARGET=${_target_path}" \
