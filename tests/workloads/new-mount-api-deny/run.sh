@@ -131,11 +131,13 @@ move_errno = ctypes.get_errno()
 if move_result == -1:
     print(f"authorized move_mount failed: errno={move_errno}", file=sys.stderr)
     raise SystemExit(1)
-if not os.path.ismount(target):
+mountinfo = open("/proc/self/mountinfo", encoding="utf-8").read()
+if target not in mountinfo:
     print("authorized move_mount did not attach the mount", file=sys.stderr)
     raise SystemExit(1)
 os.umount(target)
-if os.path.ismount(target):
+mountinfo = open("/proc/self/mountinfo", encoding="utf-8").read()
+if target in mountinfo:
     print("authorized move_mount cleanup failed", file=sys.stderr)
     raise SystemExit(1)
 os.close(result)
