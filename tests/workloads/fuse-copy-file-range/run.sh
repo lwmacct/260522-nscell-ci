@@ -35,7 +35,10 @@ _copy_program_with_diagnostics='
 import os
 
 path = "/proc/sys/kernel/printk"
+result = open("/result", "w", encoding="ascii")
 try:
+    os.setegid(65534)
+    os.seteuid(65534)
     before = open(path, "rb").read()
     source = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
     destination = os.open(path, os.O_WRONLY | os.O_CLOEXEC)
@@ -50,8 +53,7 @@ except OSError as error:
         f"copy-error:{error.errno}:uids={os.getuid()}:{os.geteuid()}:"
         f"stat={stat.st_mode:o}:{stat.st_uid}:{stat.st_gid}"
     )
-with open("/result", "w", encoding="ascii") as result:
-    result.write(output)
+result.write(output)
 '
 
 __cleanup() {
