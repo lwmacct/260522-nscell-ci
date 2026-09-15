@@ -87,22 +87,38 @@ import ctypes
 import os
 import platform
 import stat
+import struct
 import sys
 
 numbers = {
-    "x86_64": {"open_tree": 428, "move_mount": 429},
-    "aarch64": {"open_tree": 428, "move_mount": 429},
+    "x86_64": {"open_tree": 428, "move_mount": 429, "mount_setattr": 442},
+    "aarch64": {"open_tree": 428, "move_mount": 429, "mount_setattr": 442},
 }
 syscalls = numbers.get(platform.machine())
 if syscalls is None:
     raise SystemExit(f"unsupported architecture: {platform.machine()}")
 number = syscalls["open_tree"]
+mount_setattr = syscalls["mount_setattr"]
 
 path = "/var/lib/docker/overlay2/nscell-ci/merged"
 target = "/var/lib/docker/overlay2/nscell-ci/attached"
 os.makedirs(path, exist_ok=True)
 os.makedirs(target, exist_ok=True)
 libc = ctypes.CDLL(None, use_errno=True)
+
+
+def setattr_result(fd, flags, attr):
+    return libc.syscall(
+        ctypes.c_long(mount_setattr),
+        ctypes.c_int(fd),
+        None,
+        ctypes.c_uint(flags),
+        attr,
+        ctypes.c_size_t(struct.calcsize("=QQQQ")),
+    )
+
+
+
 ctypes.set_errno(0)
 result = libc.syscall(
     ctypes.c_long(number),
@@ -117,6 +133,41 @@ if result == -1:
 info = os.fstat(result)
 if not stat.S_ISSOCK(info.st_mode):
     raise SystemExit("authorized open_tree exposed a non-proxy descriptor", file=sys.stderr)
+
+unsafe_attributes = (
+    ("idmap", struct.pack("=QQQQ", 0x100000, 0, 0, 0)),
+    ("propagation", struct.pack("=QQQQ", 0, 0, 0x10000, 0)),
+    ("userns", struct.pack("=QQQQ", 0, 0, 0, 1)),
+)
+for label, unsafe_attr in unsafe_attributes:
+    ctypes.set_errno(0)
+    unsafe_result = setattr_result(result, 0x1000, unsafe_attr)
+    unsafe_errno = ctypes.get_errno()
+    if unsafe_result != -1 or unsafe_errno != 1:
+        print(
+            f"unsafe mount_setattr {label}: result={unsafe_result} errno={unsafe_errno}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+ctypes.set_errno(0)
+recursive_attr = struct.pack("=QQQQ", 0, 0, 0, 0)
+recursive_result = setattr_result(result, 0x1000 | 0x8000, recursive_attr)
+recursive_errno = ctypes.get_errno()
+if recursive_result != -1 or recursive_errno != 1:
+    print(
+        f"recursive mount_setattr: result={recursive_result} errno={recursive_errno}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+safe_attr = struct.pack("=QQQQ", 0xF, 0, 0, 0)
+ctypes.set_errno(0)
+attr_result = setattr_result(result, 0x1000, safe_attr)
+attr_errno = ctypes.get_errno()
+if attr_result == -1:
+    print(f"authorized mount_setattr failed: errno={attr_errno}", file=sys.stderr)
+    raise SystemExit(1)
 move_mount = syscalls["move_mount"]
 ctypes.set_errno(0)
 move_result = libc.syscall(
@@ -147,6 +198,12 @@ PY
   if ! sudo grep -F 'New mount API tree capability issued: syscall=open_tree' \
     "$_daemon_log" >/dev/null; then
     echo "daemon did not record the authorized open_tree capability" >&2
+    sudo tail -100 "$_daemon_log" >&2
+    exit 1
+  fi
+  if ! sudo grep -F 'New mount API attributes completed:' \
+    "$_daemon_log" >/dev/null; then
+    echo "daemon did not record the authorized mount_setattr completion" >&2
     sudo tail -100 "$_daemon_log" >&2
     exit 1
   fi
