@@ -200,8 +200,8 @@ jobs:
             sudo apt-get update
             sudo apt-get install --yes --no-install-recommends incus
             apt-cache policy incus
-            apt-cache policy incus | grep -q \
-              'https://pkgs.zabbly.com/incus/stable'
+            apt-cache policy incus | grep -F \
+              'https://pkgs.zabbly.com/incus/stable' >/dev/null
           }
 
           __main "$@"
