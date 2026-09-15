@@ -16,7 +16,7 @@ source "${_workload_dir}/library/oci.sh"
 
 _bundle="${_volume_root}/fuse-copy-file-range/bundle"
 _export_name="nscell-oci-export-${_workload_resource_id:-fuse-copy-file-range}"
-_copy_path="/proc/sys/kernel/printk"
+_copy_path="/sys/module/nf_conntrack/parameters/hashsize"
 
 __cleanup() {
   __remove_oci_container "$_oci_runtime_root" "$_fuse_copy_file_range_name"
@@ -45,7 +45,7 @@ __write_copy_program() {
   sudo tee "${_bundle}/rootfs/tmp/copy_file_range.py" >/dev/null <<'PY'
 import os
 
-path = "/proc/sys/kernel/printk"
+path = "/sys/module/nf_conntrack/parameters/hashsize"
 result = open("/result", "w", encoding="ascii")
 stage = "read"
 try:
