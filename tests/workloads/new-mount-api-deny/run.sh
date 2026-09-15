@@ -17,26 +17,39 @@ __cleanup() {
   docker rm -f "$_new_mount_api_deny_name" >/dev/null 2>&1 || true
 }
 
-__main() {
-  local _acquire_output _output
+__deny_output_has_case() {
+  local _output="$1"
+  local _syscall_name
 
-  if [[ "${1:-}" == "cleanup" ]]; then
-    __cleanup
-    return
-  fi
+  for _syscall_name in open_tree fspick move_mount mount_setattr; do
+    if [[ "$_output" != *"new-mount-api-deny-ok:${_syscall_name}"* ]]; then
+      echo "missing explicit deny result for ${_syscall_name}" >&2
+      return 1
+    fi
+  done
+}
 
-  __require_cmd docker
-  __assert_nscell_ready
-  __init_ci_dirs
-  trap __cleanup EXIT
+__daemon_has_decision() {
+  local _syscall_name="$1"
+  local _decision="$2"
+  local _profile="$3"
+
+  sudo grep -F 'New mount API decision' "$_daemon_log" |
+    grep -F "syscall=${_syscall_name}" |
+    grep -F "decision=${_decision}" |
+    grep -F "profile=${_profile}" >/dev/null
+}
+
+__run_deny_case() {
+  local _profile="$1"
+  local _output
+
   __cleanup
-  __ensure_host_image "$_container_security_policy_base_image"
-
-  __log "checking that new mount API calls reach the explicit deny mediator"
   _output="$(docker run --rm -i \
     --name "$_new_mount_api_deny_name" \
     --runtime nscell \
-    --label io.backend.security.profile=default \
+    --annotation "io.backend.security.profile=${_profile}" \
+    --label "io.backend.security.profile=${_profile}" \
     "$_container_security_policy_base_image" \
     python3 - <<'PY'
 import ctypes
@@ -60,27 +73,36 @@ for name, number in numbers[machine].items():
     print(f"new-mount-api-deny-ok:{name}")
 PY
   )"
-  printf 'new-mount-api-output=%q\n' "$_output"
+  printf 'new-mount-api-deny-output[%s]=%q\n' "$_profile" "$_output"
+  __deny_output_has_case "$_output" || return 1
 
-  for syscall_name in open_tree fspick move_mount mount_setattr; do
-    if [[ "$_output" != *"new-mount-api-deny-ok:${syscall_name}"* ]]; then
-      echo "missing explicit deny result for ${syscall_name}" >&2
-      exit 1
-    fi
-    if ! sudo grep -F "New mount API denied pending mediation: syscall=${syscall_name}" \
-      "$_daemon_log" >/dev/null; then
-      echo "daemon did not record explicit deny for ${syscall_name}" >&2
+  local _syscall_name
+  for _syscall_name in open_tree fspick move_mount mount_setattr; do
+    if ! __daemon_has_decision "$_syscall_name" deny "$_profile"; then
+      echo "daemon did not record structured ${_profile} deny for ${_syscall_name}" >&2
       sudo tail -100 "$_daemon_log" >&2
-      exit 1
+      return 1
     fi
   done
+}
 
-  __log "checking that an authorized dind open_tree receives only a proxy descriptor"
-  _acquire_output="$(docker run --rm -i \
+__run_authorized_case() {
+  local _profile="$1"
+  local _source_path="$2"
+  local _target_path="$3"
+  local _case_output
+  local _expected_output="new-mount-api-${_profile}-ok:proxy-attributes-attach"
+  local _syscall_name
+
+  __cleanup
+  _case_output="$(docker run --rm -i \
     --name "$_new_mount_api_deny_name" \
     --runtime nscell \
-    --annotation io.backend.security.profile=dind \
-    --label io.backend.security.profile=dind \
+    --annotation "io.backend.security.profile=${_profile}" \
+    --label "io.backend.security.profile=${_profile}" \
+    --env "CASE_PROFILE=${_profile}" \
+    --env "CASE_SOURCE=${_source_path}" \
+    --env "CASE_TARGET=${_target_path}" \
     "$_container_security_policy_base_image" \
     python3 - <<'PY'
 import ctypes
@@ -97,14 +119,14 @@ numbers = {
 syscalls = numbers.get(platform.machine())
 if syscalls is None:
     raise SystemExit(f"unsupported architecture: {platform.machine()}")
-number = syscalls["open_tree"]
-mount_setattr = syscalls["mount_setattr"]
 
-path = "/var/lib/docker/overlay2/nscell-ci/merged"
-target = "/var/lib/docker/overlay2/nscell-ci/attached"
+profile = os.environ["CASE_PROFILE"]
+path = os.environ["CASE_SOURCE"]
+target = os.environ["CASE_TARGET"]
 os.makedirs(path, exist_ok=True)
 os.makedirs(target, exist_ok=True)
 libc = ctypes.CDLL(None, use_errno=True)
+mount_setattr = syscalls["mount_setattr"]
 
 
 def setattr_result(fd, flags, attr):
@@ -118,10 +140,9 @@ def setattr_result(fd, flags, attr):
     )
 
 
-
 ctypes.set_errno(0)
 result = libc.syscall(
-    ctypes.c_long(number),
+    ctypes.c_long(syscalls["open_tree"]),
     ctypes.c_int(-100),
     ctypes.c_char_p(path.encode()),
     ctypes.c_uint(0x80001),
@@ -130,8 +151,7 @@ errno = ctypes.get_errno()
 if result == -1:
     print(f"authorized open_tree failed: errno={errno}", file=sys.stderr)
     raise SystemExit(1)
-info = os.fstat(result)
-if not stat.S_ISSOCK(info.st_mode):
+if not stat.S_ISSOCK(os.fstat(result).st_mode):
     raise SystemExit("authorized open_tree exposed a non-proxy descriptor", file=sys.stderr)
 
 unsafe_attributes = (
@@ -151,73 +171,106 @@ for label, unsafe_attr in unsafe_attributes:
         raise SystemExit(1)
 
 ctypes.set_errno(0)
-recursive_attr = struct.pack("=QQQQ", 0, 0, 0, 0)
-recursive_result = setattr_result(result, 0x1000 | 0x8000, recursive_attr)
-recursive_errno = ctypes.get_errno()
-if recursive_result != -1 or recursive_errno != 1:
+recursive_result = setattr_result(
+    result,
+    0x1000 | 0x8000,
+    struct.pack("=QQQQ", 0, 0, 0, 0),
+)
+if recursive_result != -1 or ctypes.get_errno() != 1:
     print(
-        f"recursive mount_setattr: result={recursive_result} errno={recursive_errno}",
+        f"recursive mount_setattr: result={recursive_result} errno={ctypes.get_errno()}",
         file=sys.stderr,
     )
     raise SystemExit(1)
 
-safe_attr = struct.pack("=QQQQ", 0xF, 0, 0, 0)
 ctypes.set_errno(0)
-attr_result = setattr_result(result, 0x1000, safe_attr)
-attr_errno = ctypes.get_errno()
+attr_result = setattr_result(
+    result,
+    0x1000,
+    struct.pack("=QQQQ", 0xF, 0, 0, 0),
+)
 if attr_result == -1:
-    print(f"authorized mount_setattr failed: errno={attr_errno}", file=sys.stderr)
+    print(
+        f"authorized mount_setattr failed: errno={ctypes.get_errno()}",
+        file=sys.stderr,
+    )
     raise SystemExit(1)
-move_mount = syscalls["move_mount"]
+
 ctypes.set_errno(0)
 move_result = libc.syscall(
-    ctypes.c_long(move_mount),
+    ctypes.c_long(syscalls["move_mount"]),
     ctypes.c_int(result),
     None,
     ctypes.c_int(-100),
     ctypes.c_char_p(target.encode()),
     ctypes.c_uint(4),
 )
-move_errno = ctypes.get_errno()
 if move_result == -1:
-    print(f"authorized move_mount failed: errno={move_errno}", file=sys.stderr)
+    print(
+        f"authorized move_mount failed: errno={ctypes.get_errno()}",
+        file=sys.stderr,
+    )
     raise SystemExit(1)
-mountinfo = open("/proc/self/mountinfo", encoding="utf-8").read()
-if target not in mountinfo:
+if target not in open("/proc/self/mountinfo", encoding="utf-8").read():
     print("authorized move_mount did not attach the mount", file=sys.stderr)
     raise SystemExit(1)
 os.close(result)
-print("new-mount-api-acquire-ok:proxy-socket-and-attach")
+print(f"new-mount-api-{profile}-ok:proxy-attributes-attach")
 PY
   )"
-  printf 'new-mount-acquire-output=%q\n' "$_acquire_output"
-  if [[ "$_acquire_output" != "new-mount-api-acquire-ok:proxy-socket-and-attach" ]]; then
-    echo "authorized open_tree did not return a proxy descriptor" >&2
-    exit 1
+  printf 'new-mount-api-authorized-output[%s]=%q\n' "$_profile" "$_case_output"
+  if [[ "$_case_output" != "$_expected_output" ]]; then
+    echo "authorized ${_profile} new-mount API case failed" >&2
+    return 1
   fi
-  if ! sudo grep -F 'New mount API tree capability issued: syscall=open_tree' \
-    "$_daemon_log" >/dev/null; then
-    echo "daemon did not record the authorized open_tree capability" >&2
-    sudo tail -100 "$_daemon_log" >&2
-    exit 1
+
+  for _syscall_name in open_tree mount_setattr move_mount; do
+    if ! __daemon_has_decision "$_syscall_name" allow "$_profile"; then
+      echo "daemon did not record structured ${_profile} allow for ${_syscall_name}" >&2
+      sudo tail -100 "$_daemon_log" >&2
+      return 1
+    fi
+  done
+}
+
+__main() {
+  local _profile
+
+  if [[ "${1:-}" == "cleanup" ]]; then
+    __cleanup
+    return
   fi
-  if ! sudo grep -F 'New mount API attributes completed:' \
-    "$_daemon_log" >/dev/null; then
-    echo "daemon did not record the authorized mount_setattr completion" >&2
-    sudo tail -100 "$_daemon_log" >&2
-    exit 1
-  fi
-  if ! sudo grep -F 'New mount API attach completed:' \
-    "$_daemon_log" >/dev/null; then
-    echo "daemon did not record the authorized move_mount completion" >&2
-    sudo tail -100 "$_daemon_log" >&2
-    exit 1
-  fi
+
+  __require_cmd docker
+  __assert_nscell_ready
+  __init_ci_dirs
+  trap __cleanup EXIT
+  __cleanup
+  __ensure_host_image "$_container_security_policy_base_image"
+
+  __log "checking structured default and restricted new-mount denials"
+  for _profile in default restricted; do
+    __run_deny_case "$_profile"
+  done
+
+  __log "checking profile-scoped proxy acquisition, attributes, and attach"
+  __run_authorized_case \
+    dind \
+    /var/lib/docker/overlay2/nscell-ci/merged \
+    /var/lib/docker/overlay2/nscell-ci/attached
+  __run_authorized_case \
+    k8s-node \
+    /var/lib/kubelet/pods/nscell-ci/merged \
+    /var/lib/kubelet/pods/nscell-ci/attached
+  __run_authorized_case \
+    buildkit \
+    /var/lib/buildkit/nscell-ci/merged \
+    /var/lib/buildkit/nscell-ci/attached
 
   __assert_nscell_ready
   trap - EXIT
   __cleanup
-  echo "new-mount-api-deny-validation-ok"
+  echo "new-mount-api-mediation-validation-ok"
 }
 
 __main "$@"
