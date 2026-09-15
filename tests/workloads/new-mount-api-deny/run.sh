@@ -21,7 +21,7 @@ __deny_output_has_case() {
   local _output="$1"
   local _syscall_name
 
-  for _syscall_name in open_tree fspick move_mount mount_setattr; do
+  for _syscall_name in open_tree fspick move_mount mount_setattr statmount listmount; do
     if [[ "$_output" != *"new-mount-api-deny-ok:${_syscall_name}"* ]]; then
       echo "missing explicit deny result for ${_syscall_name}" >&2
       return 1
@@ -54,31 +54,99 @@ __run_deny_case() {
     "$_container_security_policy_base_image" \
     python3 - <<'PY'
 import ctypes
+import fcntl
+import os
 import platform
+import struct
 
 numbers = {
-    "x86_64": {"open_tree": 428, "fspick": 433, "move_mount": 429, "mount_setattr": 442},
-    "aarch64": {"open_tree": 428, "fspick": 433, "move_mount": 429, "mount_setattr": 442},
+    "x86_64": {
+        "open_tree": 428,
+        "fspick": 433,
+        "move_mount": 429,
+        "mount_setattr": 442,
+        "statmount": 457,
+        "listmount": 458,
+    },
+    "aarch64": {
+        "open_tree": 428,
+        "fspick": 433,
+        "move_mount": 429,
+        "mount_setattr": 442,
+        "statmount": 457,
+        "listmount": 458,
+    },
 }
 machine = platform.machine()
 if machine not in numbers:
     raise SystemExit(f"unsupported architecture: {machine}")
 
 libc = ctypes.CDLL(None, use_errno=True)
+ns_fd = os.open("/proc/self/ns/mnt", os.O_RDONLY)
+ns_info = bytearray(16)
+fcntl.ioctl(ns_fd, (2 << 30) | (16 << 16) | (0xB7 << 8) | 10, ns_info, True)
+namespace_id = struct.unpack_from("=Q", ns_info, 8)[0]
+os.close(ns_fd)
+
 for name, number in numbers[machine].items():
+    if name in ("statmount", "listmount"):
+        continue
     ctypes.set_errno(0)
     result = libc.syscall(ctypes.c_long(number), ctypes.c_int(-1), None, ctypes.c_uint(0))
     errno = ctypes.get_errno()
     if result != -1 or errno != 1:
         raise SystemExit(f"{name}: result={result} errno={errno}, want result=-1 errno=1(EPERM)")
     print(f"new-mount-api-deny-ok:{name}")
+
+query_numbers = numbers[machine]
+ids = (ctypes.c_uint64 * 64)()
+list_request = struct.pack(
+    "=IIQQQ",
+    32,
+    0,
+    0xFFFFFFFFFFFFFFFF,
+    0,
+    namespace_id,
+)
+ctypes.set_errno(0)
+list_result = libc.syscall(
+    ctypes.c_long(query_numbers["listmount"]),
+    list_request,
+    ids,
+    ctypes.c_size_t(64),
+    ctypes.c_uint(0),
+)
+if list_result != -1 or ctypes.get_errno() != 1:
+    raise SystemExit(f"listmount: result={list_result} errno={ctypes.get_errno()}, want EPERM")
+print("new-mount-api-deny-ok:listmount")
+
+stat_buffer = ctypes.create_string_buffer(4096)
+stat_request = struct.pack(
+    "=IIQQQ",
+    32,
+    0,
+    1,
+    0xFF,
+    namespace_id,
+)
+ctypes.set_errno(0)
+stat_result = libc.syscall(
+    ctypes.c_long(query_numbers["statmount"]),
+    stat_request,
+    stat_buffer,
+    ctypes.c_size_t(len(stat_buffer)),
+    ctypes.c_uint(0),
+)
+if stat_result != -1 or ctypes.get_errno() != 1:
+    raise SystemExit(f"statmount: result={stat_result} errno={ctypes.get_errno()}, want EPERM")
+print("new-mount-api-deny-ok:statmount")
 PY
   )"
   printf 'new-mount-api-deny-output[%s]=%q\n' "$_profile" "$_output"
   __deny_output_has_case "$_output" || return 1
 
   local _syscall_name
-  for _syscall_name in open_tree fspick move_mount mount_setattr; do
+  for _syscall_name in open_tree fspick move_mount mount_setattr statmount listmount; do
     if ! __daemon_has_decision "$_syscall_name" deny "$_profile"; then
       echo "daemon did not record structured ${_profile} deny for ${_syscall_name}" >&2
       sudo tail -100 "$_daemon_log" >&2
@@ -108,6 +176,7 @@ __run_authorized_case() {
     "$_container_security_policy_base_image" \
     python3 - <<'PY'
 import ctypes
+import fcntl
 import os
 import platform
 import stat
@@ -115,8 +184,8 @@ import struct
 import sys
 
 numbers = {
-    "x86_64": {"open_tree": 428, "move_mount": 429, "mount_setattr": 442},
-    "aarch64": {"open_tree": 428, "move_mount": 429, "mount_setattr": 442},
+    "x86_64": {"open_tree": 428, "move_mount": 429, "mount_setattr": 442, "statmount": 457, "listmount": 458},
+    "aarch64": {"open_tree": 428, "move_mount": 429, "mount_setattr": 442, "statmount": 457, "listmount": 458},
 }
 syscalls = numbers.get(platform.machine())
 if syscalls is None:
@@ -129,6 +198,133 @@ os.makedirs(path, exist_ok=True)
 os.makedirs(target, exist_ok=True)
 libc = ctypes.CDLL(None, use_errno=True)
 mount_setattr = syscalls["mount_setattr"]
+
+
+def mount_namespace_id():
+    fd = os.open("/proc/self/ns/mnt", os.O_RDONLY)
+    try:
+        info = bytearray(16)
+        fcntl.ioctl(fd, (2 << 30) | (16 << 16) | (0xB7 << 8) | 10, info, True)
+        return struct.unpack_from("=Q", info, 8)[0]
+    finally:
+        os.close(fd)
+
+
+def query_request(mount_id, param, namespace):
+    return struct.pack("=IIQQQ", 32, 0, mount_id, param, namespace)
+
+
+namespace_id = mount_namespace_id()
+
+ids = (ctypes.c_uint64 * 64)()
+ctypes.set_errno(0)
+list_result = libc.syscall(
+    ctypes.c_long(syscalls["listmount"]),
+    query_request(0xFFFFFFFFFFFFFFFF, 0, namespace_id),
+    ids,
+    ctypes.c_size_t(len(ids)),
+    ctypes.c_uint(0),
+)
+list_errno = ctypes.get_errno()
+if list_result < 1:
+    print(f"authorized listmount failed: result={list_result} errno={list_errno}", file=sys.stderr)
+    raise SystemExit(1)
+
+resume_ids = (ctypes.c_uint64 * 64)()
+ctypes.set_errno(0)
+resume_result = libc.syscall(
+    ctypes.c_long(syscalls["listmount"]),
+    query_request(0xFFFFFFFFFFFFFFFF, ids[list_result - 1], namespace_id),
+    resume_ids,
+    ctypes.c_size_t(len(resume_ids)),
+    ctypes.c_uint(0),
+)
+if resume_result != 0 or ctypes.get_errno() != 0:
+    raise SystemExit(
+        f"listmount resume failed: result={resume_result} errno={ctypes.get_errno()}"
+    )
+
+absent_resume_ids = (ctypes.c_uint64 * 64)()
+ctypes.set_errno(0)
+absent_resume_result = libc.syscall(
+    ctypes.c_long(syscalls["listmount"]),
+    query_request(0xFFFFFFFFFFFFFFFF, 1 << 63, namespace_id),
+    absent_resume_ids,
+    ctypes.c_size_t(len(absent_resume_ids)),
+    ctypes.c_uint(0),
+)
+if absent_resume_result != -1 or ctypes.get_errno() != 2:
+    raise SystemExit("listmount accepted an absent resume mount")
+
+stat_buffer = ctypes.create_string_buffer(4096)
+ctypes.set_errno(0)
+stat_result = libc.syscall(
+    ctypes.c_long(syscalls["statmount"]),
+    query_request(ids[0], 0xFF, namespace_id),
+    stat_buffer,
+    ctypes.c_size_t(len(stat_buffer)),
+    ctypes.c_uint(0),
+)
+stat_errno = ctypes.get_errno()
+if stat_result == -1:
+    print(f"authorized statmount failed: errno={stat_errno}", file=sys.stderr)
+    raise SystemExit(1)
+result_size, options_offset, result_mask = struct.unpack_from("=IIQ", stat_buffer, 0)
+result_mount_id = struct.unpack_from("=Q", stat_buffer, 40)[0]
+result_namespace = struct.unpack_from("=Q", stat_buffer, 112)[0]
+if result_size <= 512 or result_mask != 0xFF or result_mount_id != ids[0] or result_namespace != namespace_id:
+    raise SystemExit(
+        "authorized statmount returned invalid identity: "
+        f"size={result_size} mask={result_mask:#x} mount={result_mount_id} namespace={result_namespace}"
+    )
+
+small_stat_buffer = ctypes.create_string_buffer(512)
+ctypes.set_errno(0)
+small_stat_result = libc.syscall(
+    ctypes.c_long(syscalls["statmount"]),
+    query_request(ids[0], 0xFF, namespace_id),
+    small_stat_buffer,
+    ctypes.c_size_t(len(small_stat_buffer)),
+    ctypes.c_uint(0),
+)
+if small_stat_result != -1 or ctypes.get_errno() != 75:
+    raise SystemExit("statmount accepted an undersized string buffer")
+
+wrong_namespace_ids = (ctypes.c_uint64 * 8)()
+ctypes.set_errno(0)
+wrong_namespace_result = libc.syscall(
+    ctypes.c_long(syscalls["listmount"]),
+    query_request(0xFFFFFFFFFFFFFFFF, 0, namespace_id ^ 1),
+    wrong_namespace_ids,
+    ctypes.c_size_t(len(wrong_namespace_ids)),
+    ctypes.c_uint(0),
+)
+if wrong_namespace_result != -1 or ctypes.get_errno() != 1:
+    raise SystemExit("listmount accepted a foreign mount namespace")
+
+unknown_mask_buffer = ctypes.create_string_buffer(4096)
+ctypes.set_errno(0)
+unknown_mask_result = libc.syscall(
+    ctypes.c_long(syscalls["statmount"]),
+    query_request(ids[0], 1 << 63, namespace_id),
+    unknown_mask_buffer,
+    ctypes.c_size_t(len(unknown_mask_buffer)),
+    ctypes.c_uint(0),
+)
+if unknown_mask_result != -1 or ctypes.get_errno() != 22:
+    raise SystemExit("statmount accepted an unknown mask")
+
+future_request = struct.pack("=IIQQQ", 40, 0, 1, 0, namespace_id)
+ctypes.set_errno(0)
+future_request_result = libc.syscall(
+    ctypes.c_long(syscalls["statmount"]),
+    future_request,
+    unknown_mask_buffer,
+    ctypes.c_size_t(len(unknown_mask_buffer)),
+    ctypes.c_uint(0),
+)
+if future_request_result != -1 or ctypes.get_errno() != 22:
+    raise SystemExit("statmount accepted a future request size")
 
 
 def setattr_result(fd, flags, attr):
@@ -147,7 +343,7 @@ denied_result = libc.syscall(
     ctypes.c_long(syscalls["open_tree"]),
     ctypes.c_int(-100),
     ctypes.c_char_p(b"/etc"),
-    ctypes.c_uint(0x80001),
+    ctypes.c_uint(0x90001),
 )
 if denied_result != -1 or ctypes.get_errno() != 1:
     print(
@@ -161,7 +357,7 @@ result = libc.syscall(
     ctypes.c_long(syscalls["open_tree"]),
     ctypes.c_int(-100),
     ctypes.c_char_p(path.encode()),
-    ctypes.c_uint(0x80001),
+    ctypes.c_uint(0x90001),
 )
 errno = ctypes.get_errno()
 if result == -1:
@@ -240,20 +436,29 @@ PY
     return 1
   fi
 
-  for _syscall_name in open_tree mount_setattr move_mount; do
+  for _syscall_name in open_tree mount_setattr move_mount listmount statmount; do
     if ! __daemon_has_decision "$_syscall_name" allow "$_profile"; then
       echo "daemon did not record structured ${_profile} allow for ${_syscall_name}" >&2
       sudo tail -100 "$_daemon_log" >&2
       return 1
     fi
   done
-  for _syscall_name in open_tree mount_setattr; do
+  for _syscall_name in open_tree mount_setattr listmount statmount; do
     if ! __daemon_has_decision "$_syscall_name" deny "$_profile"; then
       echo "daemon did not record structured ${_profile} deny for ${_syscall_name}" >&2
       sudo tail -100 "$_daemon_log" >&2
       return 1
     fi
   done
+  if ! sudo grep -F 'New mount API decision' "$_daemon_log" |
+    grep -F 'syscall=open_tree' |
+    grep -F 'decision=allow' |
+    grep -F "profile=${_profile}" |
+    grep -F 'flags=0x90001' >/dev/null; then
+    echo "daemon did not record recursive ${_profile} open_tree acquisition" >&2
+    sudo tail -100 "$_daemon_log" >&2
+    return 1
+  fi
 }
 
 __main() {
