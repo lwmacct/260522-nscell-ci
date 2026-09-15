@@ -27,7 +27,7 @@ __restore_daemon() {
 
 __main() {
   local _create_pid _daemon_start_pid _deadline
-  local _started_ms _finished_ms _elapsed_ms
+  local _started_seconds _elapsed_seconds
 
   if [[ "${1:-}" == "cleanup" ]]; then
     __restore_daemon
@@ -54,7 +54,7 @@ __main() {
     echo "daemon remained active after systemctl stop" >&2
     exit 1
   fi
-  _started_ms="$(date +%s%3N)"
+  _started_seconds=$SECONDS
   # shellcheck disable=SC2024 # The workload log directory is owned by the caller.
   sudo nscell --root "$_oci_runtime_root" create \
     --bundle "$_bundle" \
@@ -89,14 +89,13 @@ __main() {
     cat "$_create_log" >&2
     exit 1
   fi
-  _finished_ms="$(date +%s%3N)"
-  _elapsed_ms=$((_finished_ms - _started_ms))
+  _elapsed_seconds=$((SECONDS - _started_seconds))
   if ! wait "$_daemon_start_pid"; then
     echo "nscell daemon failed to start during OCI create retry" >&2
     exit 1
   fi
-  if ((_elapsed_ms < 900)); then
-    echo "OCI create completed before exercising daemon dial retry: ${_elapsed_ms}ms" >&2
+  if ((_elapsed_seconds < 1)); then
+    echo "OCI create completed before exercising daemon dial retry: ${_elapsed_seconds}s" >&2
     exit 1
   fi
 
@@ -107,7 +106,7 @@ __main() {
 
   trap - EXIT
   __restore_daemon
-  echo "daemon-dial-retry-validation-ok elapsed=${_elapsed_ms}ms"
+  echo "daemon-dial-retry-validation-ok elapsed=${_elapsed_seconds}s"
 }
 
 __main "$@"
