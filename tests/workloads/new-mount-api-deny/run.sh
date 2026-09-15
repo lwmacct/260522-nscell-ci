@@ -18,7 +18,7 @@ __cleanup() {
 }
 
 __main() {
-  local _output
+  local _acquire_output _output
 
   if [[ "${1:-}" == "cleanup" ]]; then
     __cleanup
@@ -74,6 +74,56 @@ PY
       exit 1
     fi
   done
+
+  __log "checking that an authorized dind open_tree receives only a proxy descriptor"
+  _acquire_output="$(docker run --rm -i \
+    --name "$_new_mount_api_deny_name" \
+    --runtime nscell \
+    --label io.backend.security.profile=dind \
+    "$_container_security_policy_base_image" \
+    python3 - <<'PY'
+import ctypes
+import os
+import platform
+import stat
+import sys
+
+numbers = {"x86_64": 428, "aarch64": 428}
+number = numbers.get(platform.machine())
+if number is None:
+    raise SystemExit(f"unsupported architecture: {platform.machine()}")
+
+path = "/var/lib/docker/overlay2/nscell-ci/merged"
+os.makedirs(path, exist_ok=True)
+libc = ctypes.CDLL(None, use_errno=True)
+ctypes.set_errno(0)
+result = libc.syscall(
+    ctypes.c_long(number),
+    ctypes.c_int(-100),
+    ctypes.c_char_p(path.encode()),
+    ctypes.c_uint(0x80001),
+)
+errno = ctypes.get_errno()
+if result == -1:
+    raise SystemExit(f"authorized open_tree failed: errno={errno}", file=sys.stderr)
+info = os.fstat(result)
+if not stat.S_ISSOCK(info.st_mode):
+    raise SystemExit("authorized open_tree exposed a non-proxy descriptor", file=sys.stderr)
+os.close(result)
+print("new-mount-api-acquire-ok:proxy-socket")
+PY
+  )"
+  printf 'new-mount-acquire-output=%q\n' "$_acquire_output"
+  if [[ "$_acquire_output" != "new-mount-api-acquire-ok:proxy-socket" ]]; then
+    echo "authorized open_tree did not return a proxy descriptor" >&2
+    exit 1
+  fi
+  if ! sudo grep -F 'New mount API tree capability issued: syscall=open_tree' \
+    "$_daemon_log" >/dev/null; then
+    echo "daemon did not record the authorized open_tree capability" >&2
+    sudo tail -100 "$_daemon_log" >&2
+    exit 1
+  fi
 
   __assert_nscell_ready
   trap - EXIT
