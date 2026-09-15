@@ -57,9 +57,9 @@ try:
     requested = min(4, len(before))
     if requested == 0:
         raise OSError("empty copy source")
-    count = os.copy_file_range(source, destination, requested, 0, 0)
+    count = os.copy_file_range(source, destination, requested, 0, requested)
     after = open(path, "rb").read()
-    assert count == requested
+    assert count == 0
     assert after == before
     output = f"fuse-copy-file-range-ok:{count}"
 except OSError as error:
