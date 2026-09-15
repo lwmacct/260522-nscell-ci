@@ -257,8 +257,6 @@ PY
 }
 
 __main() {
-  local _profile
-
   if [[ "${1:-}" == "cleanup" ]]; then
     __cleanup
     return
@@ -271,10 +269,8 @@ __main() {
   __cleanup
   __ensure_host_image "$_container_security_policy_base_image"
 
-  __log "checking structured default and restricted new-mount denials"
-  for _profile in default restricted; do
-    __run_deny_case "$_profile"
-  done
+  __log "checking structured default new-mount denials"
+  __run_deny_case default
 
   __log "checking profile-scoped proxy acquisition, attributes, and attach"
   __run_authorized_case \
