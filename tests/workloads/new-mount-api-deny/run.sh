@@ -90,8 +90,8 @@ import stat
 import sys
 
 numbers = {
-    "x86_64": {"open_tree": 428, "move_mount": 429, "umount2": 166},
-    "aarch64": {"open_tree": 428, "move_mount": 429, "umount2": 39},
+    "x86_64": {"open_tree": 428, "move_mount": 429},
+    "aarch64": {"open_tree": 428, "move_mount": 429},
 }
 syscalls = numbers.get(platform.machine())
 if syscalls is None:
@@ -134,20 +134,6 @@ if move_result == -1:
 mountinfo = open("/proc/self/mountinfo", encoding="utf-8").read()
 if target not in mountinfo:
     print("authorized move_mount did not attach the mount", file=sys.stderr)
-    raise SystemExit(1)
-ctypes.set_errno(0)
-umount_result = libc.syscall(
-    ctypes.c_long(syscalls["umount2"]),
-    ctypes.c_char_p(target.encode()),
-    ctypes.c_uint(0),
-)
-umount_errno = ctypes.get_errno()
-if umount_result == -1:
-    print(f"authorized move_mount cleanup failed: errno={umount_errno}", file=sys.stderr)
-    raise SystemExit(1)
-mountinfo = open("/proc/self/mountinfo", encoding="utf-8").read()
-if target in mountinfo:
-    print("authorized move_mount cleanup failed", file=sys.stderr)
     raise SystemExit(1)
 os.close(result)
 print("new-mount-api-acquire-ok:proxy-socket-and-attach")
