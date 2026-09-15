@@ -32,12 +32,37 @@ set -euo pipefail
 _test_target="${NSCELL_TEST_TARGET}"
 _nscell_image="${NSCELL_IMAGE}"
 
-if [[ -n "${NSCELL_REGISTRY_TOKEN}" ]]; then
-  printf '%s' "${NSCELL_REGISTRY_TOKEN}" |
-    oras login ghcr.io \
-      --username "${NSCELL_REGISTRY_USERNAME}" \
-      --password-stdin
-fi
+__retry() {
+  local _max_attempts="$1"
+  shift
+  local _attempt=1
+  local _status
+
+  while true; do
+    if "$@"; then
+      return 0
+    else
+      _status=$?
+    fi
+    if ((_attempt >= _max_attempts)); then
+      return "$_status"
+    fi
+    echo "${1} failed with ${_status}; retrying ($((_attempt + 1))/${_max_attempts})" >&2
+    sleep $((_attempt * 2))
+    _attempt=$((_attempt + 1))
+  done
+}
+
+__login_ghcr() {
+  if [[ -n "${NSCELL_REGISTRY_TOKEN}" ]]; then
+    printf '%s' "${NSCELL_REGISTRY_TOKEN}" |
+      oras login ghcr.io \
+        --username "${NSCELL_REGISTRY_USERNAME}" \
+        --password-stdin
+  fi
+}
+
+__retry 3 __login_ghcr
 
 mountpoint -q /sys/fs/bpf || mount -t bpf bpf /sys/fs/bpf
 grep -qw bpf /sys/kernel/security/lsm
