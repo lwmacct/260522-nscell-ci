@@ -87,7 +87,7 @@ __wait_for_stopped() {
 }
 
 __main() {
-  local _args _output
+  local _args _config_tmp _output
 
   if [[ "${1:-}" == "cleanup" ]]; then
     __cleanup
@@ -107,6 +107,12 @@ __main() {
     "$_bundle" \
     "$_args" \
     "$_export_name"
+  _config_tmp="$(mktemp)"
+  # shellcheck disable=SC2024 # The temporary output file is owned by the caller.
+  sudo jq '.annotations["io.backend.security.profile"] = "dind"' \
+    "${_bundle}/config.json" >"$_config_tmp"
+  sudo install -m 0600 "$_config_tmp" "${_bundle}/config.json"
+  rm -f "$_config_tmp"
 
   __log "issuing copy_file_range over VirtFS"
   sudo nscell --root "$_oci_runtime_root" create \
