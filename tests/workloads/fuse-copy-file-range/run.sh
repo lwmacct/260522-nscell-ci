@@ -60,7 +60,7 @@ __main() {
   __prepare_oci_bundle \
     "$_oci_base_image" \
     "$_bundle" \
-    '["/bin/sh", "-c", "sleep 60"]' \
+    '["/bin/sh", "-c", "cat /proc/sys/kernel/printk >/dev/null; sleep 60"]' \
     "$_export_name"
 
   __log "creating the VirtFS mount for copy_file_range"
