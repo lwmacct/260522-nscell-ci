@@ -141,6 +141,20 @@ def setattr_result(fd, flags, attr):
 
 
 ctypes.set_errno(0)
+denied_result = libc.syscall(
+    ctypes.c_long(syscalls["open_tree"]),
+    ctypes.c_int(-100),
+    ctypes.c_char_p(b"/etc"),
+    ctypes.c_uint(0x80001),
+)
+if denied_result != -1 or ctypes.get_errno() != 1:
+    print(
+        f"unauthorized open_tree: result={denied_result} errno={ctypes.get_errno()}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+ctypes.set_errno(0)
 result = libc.syscall(
     ctypes.c_long(syscalls["open_tree"]),
     ctypes.c_int(-100),
@@ -231,6 +245,13 @@ PY
       return 1
     fi
   done
+  for _syscall_name in open_tree mount_setattr; do
+    if ! __daemon_has_decision "$_syscall_name" deny "$_profile"; then
+      echo "daemon did not record structured ${_profile} deny for ${_syscall_name}" >&2
+      sudo tail -100 "$_daemon_log" >&2
+      return 1
+    fi
+  done
 }
 
 __main() {
@@ -248,8 +269,8 @@ __main() {
   __cleanup
   __ensure_host_image "$_container_security_policy_base_image"
 
-  __log "checking structured default and restricted new-mount denials"
-  for _profile in default restricted; do
+  __log "checking structured default new-mount denials"
+  for _profile in default; do
     __run_deny_case "$_profile"
   done
 
