@@ -81,6 +81,8 @@ _procfs_cpu_base_image="${NSCELL_CI_PROCFS_CPU_BASE_IMAGE:-docker.io/library/pyt
 _procfs_cpu_image="${NSCELL_CI_PROCFS_CPU_IMAGE:-$(__image_tag nscell-ci/procfs-cpu latest)}"
 _procfs_cpu_quota_cpus="${NSCELL_CI_PROCFS_CPU_QUOTA_CPUS:-0.1}"
 
+_new_mount_api_deny_name="${NSCELL_CI_NEW_MOUNT_API_DENY_NAME:-nscell-new-mount-api-deny${_workload_resource_id:+-${_workload_resource_id}}}"
+
 _seccomp_notify_concurrency_name="${NSCELL_CI_SECCOMP_NOTIFY_CONCURRENCY_NAME:-nscell-seccomp-notify-concurrency${_workload_resource_id:+-${_workload_resource_id}}}"
 _seccomp_notify_concurrency_base_image="${NSCELL_CI_SECCOMP_NOTIFY_CONCURRENCY_BASE_IMAGE:-docker.io/library/python:3.12-alpine}"
 _seccomp_notify_concurrency_image="${NSCELL_CI_SECCOMP_NOTIFY_CONCURRENCY_IMAGE:-$(__image_tag nscell-ci/seccomp-notify-concurrency latest)}"

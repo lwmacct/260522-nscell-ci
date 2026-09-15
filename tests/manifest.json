@@ -13,6 +13,7 @@
     {"name":"fuse-copy-file-range","kind":"workload","modes":{"host":{"suites":["gate","full"],"timeout_minutes":15},"vm":{"suites":["smoke","gate","full"],"timeout_minutes":20}}},
     {"name":"fuse-request-timeout","kind":"workload","modes":{"vm":{"suites":["gate","full"],"timeout_minutes":5}}},
     {"name":"kernel-capability-smoke","kind":"workload","modes":{"host":{"suites":["smoke","gate","full"],"timeout_minutes":15},"vm":{"suites":["smoke","gate","full"],"timeout_minutes":20}}},
+    {"name":"new-mount-api-deny","kind":"workload","modes":{"host":{"suites":["gate","full"],"timeout_minutes":15},"vm":{"suites":["smoke","gate","full"],"timeout_minutes":20}}},
     {"name":"procfs-cpu","kind":"workload","modes":{"host":{"suites":["gate","full"],"timeout_minutes":45},"vm":{"suites":["full"],"timeout_minutes":60}}},
     {"name":"resource-limits","kind":"workload","modes":{"host":{"suites":["gate","full"],"timeout_minutes":45},"vm":{"suites":["gate","full"],"timeout_minutes":60}}},
     {"name":"procfs-memory","kind":"workload","modes":{"host":{"suites":["gate","full"],"timeout_minutes":45},"vm":{"suites":["full"],"timeout_minutes":60}}},
