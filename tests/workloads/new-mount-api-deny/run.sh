@@ -343,7 +343,7 @@ denied_result = libc.syscall(
     ctypes.c_long(syscalls["open_tree"]),
     ctypes.c_int(-100),
     ctypes.c_char_p(b"/etc"),
-    ctypes.c_uint(0x90001),
+    ctypes.c_uint(0x88001),
 )
 if denied_result != -1 or ctypes.get_errno() != 1:
     print(
@@ -357,7 +357,7 @@ result = libc.syscall(
     ctypes.c_long(syscalls["open_tree"]),
     ctypes.c_int(-100),
     ctypes.c_char_p(path.encode()),
-    ctypes.c_uint(0x90001),
+    ctypes.c_uint(0x88001),
 )
 errno = ctypes.get_errno()
 if result == -1:
@@ -454,7 +454,7 @@ PY
     grep -F 'syscall=open_tree' |
     grep -F 'decision=allow' |
     grep -F "profile=${_profile}" |
-    grep -F 'flags=0x90001' >/dev/null; then
+    grep -F 'flags=0x88001' >/dev/null; then
     echo "daemon did not record recursive ${_profile} open_tree acquisition" >&2
     sudo tail -100 "$_daemon_log" >&2
     return 1
