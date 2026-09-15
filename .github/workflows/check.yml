@@ -25,7 +25,7 @@ env:
 jobs:
   static:
     name: Static checks
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - name: Checkout repository
@@ -56,7 +56,7 @@ jobs:
 
   changes:
     name: Select smoke coverage
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       nscell_image: ${{ steps.image.outputs.nscell_image }}
       runtime: ${{ steps.paths.outputs.runtime }}

@@ -1,6 +1,6 @@
 # Derived from lxc/lxc-ci images/ubuntu.yaml via
 # /data/project/260807-build-incus/workspace/images/ubuntu.yaml. The workflow
-# fixes this definition to Ubuntu 24.04 (noble), amd64, default, and VM.
+# fixes this definition to Ubuntu 26.04 (resolute), amd64, default, and VM.
 image:
   distribution: "ubuntu"
 
@@ -450,7 +450,6 @@ packages:
     - fuse3
     releases:
     - jammy
-    - noble
     - resolute
     action: install
 
@@ -489,7 +488,6 @@ packages:
     - systemd-resolved
     action: install
     releases:
-    - noble
     - resolute
 
   - packages:
@@ -524,10 +522,10 @@ packages:
     - vm
 
   - packages:
-    - linux-image-virtual-hwe-24.04
+    - linux-image-virtual-hwe-26.04
     action: install
     releases:
-    - noble
+    - resolute
     types:
     - vm
 
@@ -570,7 +568,7 @@ packages:
     - xz-utils
     action: install
     releases:
-    - noble
+    - resolute
     architectures:
     - amd64
     types:
@@ -658,7 +656,7 @@ actions:
     usermod -aG docker ubuntu
     systemctl enable docker.service
   releases:
-  - noble
+  - resolute
   architectures:
   - amd64
   types:
@@ -681,7 +679,7 @@ actions:
     oras version
     rm -f "${ORAS_ARCHIVE}"
   releases:
-  - noble
+  - resolute
   architectures:
   - amd64
   types:
@@ -697,7 +695,6 @@ actions:
     rm -f /etc/resolv.conf
     ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
   releases:
-  - noble
   - resolute
 
 - trigger: post-packages

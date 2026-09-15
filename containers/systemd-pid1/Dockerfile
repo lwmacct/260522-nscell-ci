@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM docker.io/library/ubuntu:24.04
+FROM docker.io/library/ubuntu:26.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG IMAGE_CHANNEL=systemd-pid1
@@ -60,6 +60,6 @@ VOLUME ["/sys/fs/cgroup"]
 CMD ["/usr/bin/systemd"]
 
 LABEL org.opencontainers.image.source="https://github.com/lwmacct/260522-nscell-ci" \
-	org.opencontainers.image.description="Ubuntu 24.04 systemd PID 1 workload base" \
+	org.opencontainers.image.description="Ubuntu 26.04 systemd PID 1 workload base" \
 	org.opencontainers.image.version="${IMAGE_CHANNEL}" \
 	org.opencontainers.image.revision="${VCS_REF}"

@@ -39,7 +39,7 @@ env:
 jobs:
   prepare:
     name: Prepare image matrix
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       images: ${{ steps.matrix.outputs.images }}
     steps:
@@ -125,7 +125,7 @@ jobs:
   build:
     name: ${{ matrix.image }} / VM / AMD64
     needs: prepare
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 150
     permissions:
       contents: read
@@ -259,8 +259,8 @@ jobs:
             sudo install -d -m 0755 "${RUNNER_TEMP}/${OUTPUT_DIR_NAME}"
             case "${IMAGE_NAME}" in
               standard)
-                _release="noble"
-                _description="Test VM ${IMAGE_NAME}: Ubuntu 24.04 AMD64"
+                _release="resolute"
+                _description="Test VM ${IMAGE_NAME}: Ubuntu 26.04 AMD64"
                 ;;
               linux-6-12)
                 _release="trixie"
@@ -325,7 +325,7 @@ jobs:
             set -euo pipefail
             case "${IMAGE_NAME}" in
               standard)
-                _description="Test VM ${IMAGE_NAME}: Ubuntu 24.04 AMD64"
+                _description="Test VM ${IMAGE_NAME}: Ubuntu 26.04 AMD64"
                 ;;
               linux-6-12)
                 _description="Test VM ${IMAGE_NAME}: Debian 13 / Linux 6.12 AMD64"

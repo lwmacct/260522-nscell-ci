@@ -117,9 +117,9 @@ __main() {
   sudo incus exec "${_vm_name}" -- getent ahostsv4 registry-1.docker.io
 
   __assert_guest_https \
-    https://archive.ubuntu.com/ubuntu/dists/noble/InRelease 200
+    https://archive.ubuntu.com/ubuntu/dists/resolute/InRelease 200
   __assert_guest_https \
-    https://security.ubuntu.com/ubuntu/dists/noble-security/InRelease 200
+    https://security.ubuntu.com/ubuntu/dists/resolute-security/InRelease 200
   __assert_guest_https https://ghcr.io/v2/ 200 401
   __assert_guest_https https://registry-1.docker.io/v2/ 200 401
 

@@ -6,7 +6,7 @@ Incus from the signed Zabbly source at `pkgs.zabbly.com`.
 
 Two profiles are maintained:
 
-- `images/standard.yaml` is Ubuntu 24.04 with the current HWE virtual kernel.
+- `images/standard.yaml` is Ubuntu 26.04 with `linux-image-virtual-hwe-26.04`.
   It provides broad current-kernel workload coverage.
 - `images/linux-6-12.yaml` is Debian 13 with the stable 6.12 kernel. It is the
   exact floor gate and is used for `kernel-capability-smoke`.

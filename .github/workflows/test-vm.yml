@@ -79,7 +79,7 @@ env:
 jobs:
   prepare:
     name: Prepare workload matrix
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       image_ref: ${{ steps.matrix.outputs.image_ref }}
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -148,7 +148,7 @@ jobs:
   test:
     name: ${{ matrix.name }} / ${{ inputs.image_name || 'standard' }} VM
     needs: prepare
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
       fail-fast: false

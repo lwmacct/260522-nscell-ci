@@ -31,7 +31,7 @@ recovery tests decode the checksummed `/var/lib/nscell/state/events.log`
 snapshots directly, so they validate the daemon's actual recovery state instead
 of relying on legacy per-domain JSON files.
 
-The expensive Ubuntu 24.04 systemd environment is published separately as
+The expensive Ubuntu 26.04 systemd environment is published separately as
 `ghcr.io/lwmacct/260522-nscell-ci:systemd-pid1-latest`. Only the
 `systemd-pid1` workload pulls it, on demand. The probe script and systemd unit
 remain under `tests/workloads/systemd-pid1/` and are injected at test time, so
