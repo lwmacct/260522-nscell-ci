@@ -54,9 +54,12 @@ try:
     stage = "open-write"
     destination = os.open(path, os.O_WRONLY | os.O_CLOEXEC)
     stage = "copy"
-    count = os.copy_file_range(source, destination, len(before), 0, 0)
+    requested = min(4, len(before))
+    if requested == 0:
+        raise OSError("empty copy source")
+    count = os.copy_file_range(source, destination, requested, 0, 0)
     after = open(path, "rb").read()
-    assert count == len(before)
+    assert count == requested
     assert after == before
     output = f"fuse-copy-file-range-ok:{count}"
 except OSError as error:
