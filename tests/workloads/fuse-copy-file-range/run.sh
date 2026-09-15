@@ -88,7 +88,7 @@ __main() {
   __prepare_oci_bundle \
     "$_fuse_copy_file_range_base_image" \
     "$_bundle" \
-    '["/bin/sh", "-c", "mount -o remount,rw /proc/sys/kernel/printk && exec python3 /tmp/copy_file_range.py"]' \
+    '["/bin/sh", "-c", "mount -o remount,rw /proc/sys && exec python3 /tmp/copy_file_range.py"]' \
     "$_export_name"
   __write_copy_program
   _config_tmp="$(mktemp)"
