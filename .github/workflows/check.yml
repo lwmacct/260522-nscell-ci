@@ -111,7 +111,7 @@ jobs:
         if: steps.paths.outputs.runtime == 'true'
         id: image
         env:
-          IMAGE_REF: ghcr.io/lwmacct/260522-nscell:latest
+          IMAGE_REF: ghcr.io/lwmacct/260522-nscell:main-validated
         run: |
           __main() {
             local _image_ref
