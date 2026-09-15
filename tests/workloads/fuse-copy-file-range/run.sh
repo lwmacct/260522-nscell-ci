@@ -36,11 +36,19 @@ import os
 
 path = "/proc/sys/kernel/printk"
 result = open("/result", "w", encoding="ascii")
+stage = "identity"
 try:
     os.setgid(65534)
     os.setuid(65534)
+    stage = "read"
     before = open(path, "rb").read()
     source = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
+    stage = "write-probe"
+    probe = os.open(path, os.O_WRONLY | os.O_CLOEXEC)
+    if os.write(probe, before) != len(before):
+        raise OSError("short write probe")
+    os.close(probe)
+    stage = "copy"
     destination = os.open(path, os.O_WRONLY | os.O_CLOEXEC)
     count = os.copy_file_range(source, destination, len(before), 0, 0)
     after = open(path, "rb").read()
@@ -51,7 +59,7 @@ except OSError as error:
     stat = os.stat(path)
     output = (
         f"copy-error:{error.errno}:uids={os.getuid()}:{os.geteuid()}:"
-        f"stat={stat.st_mode:o}:{stat.st_uid}:{stat.st_gid}"
+        f"stage={stage}:stat={stat.st_mode:o}:{stat.st_uid}:{stat.st_gid}"
     )
 result.write(output)
 '
