@@ -60,7 +60,7 @@ __main() {
   __prepare_oci_bundle \
     "$_oci_base_image" \
     "$_bundle" \
-    '["/bin/true"]' \
+    '["/bin/sh", "-c", "sleep 60"]' \
     "$_export_name"
 
   __log "creating the VirtFS mount for copy_file_range"
@@ -70,6 +70,9 @@ __main() {
     "$_fuse_copy_file_range_name"
   sudo findmnt -rn -T "/var/lib/nscellfs/${_fuse_copy_file_range_name}" -o FSTYPE |
     grep -Eq '^fuse(\.nscellfs)?$'
+  sudo nscell --root "$_oci_runtime_root" start "$_fuse_copy_file_range_name"
+  sudo nscell --root "$_oci_runtime_root" state "$_fuse_copy_file_range_name" |
+    jq -e '.status == "running" and .pid > 0' >/dev/null
 
   __log "issuing copy_file_range over VirtFS"
   if ! _output="$(__run_copy_probe)"; then
