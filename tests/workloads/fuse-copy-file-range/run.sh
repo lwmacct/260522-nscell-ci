@@ -52,7 +52,7 @@ __main() {
   docker run -d \
     --name "$_fuse_copy_file_range_name" \
     --runtime nscell \
-    --label io.backend.security.profile=default \
+    --label io.backend.security.profile=dind \
     "$_container_security_policy_base_image" \
     python3 -c \
     'import os; p="'"$_copy_path"'"; before=open(p,"rb").read(); src=os.open(p,os.O_RDONLY|os.O_CLOEXEC); dst=os.open(p,os.O_WRONLY|os.O_CLOEXEC); count=os.copy_file_range(src,dst,len(before),0,0); after=open(p,"rb").read(); assert count==len(before); assert after==before; print("fuse-copy-file-range-ok",count,sep=":")' \
