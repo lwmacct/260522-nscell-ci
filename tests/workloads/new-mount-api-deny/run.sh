@@ -90,7 +90,7 @@ import stat
 import sys
 
 numbers = {
-    "x86_64": {"open_tree": 428, "move_mount": 429, "umount2": 39},
+    "x86_64": {"open_tree": 428, "move_mount": 429, "umount2": 166},
     "aarch64": {"open_tree": 428, "move_mount": 429, "umount2": 39},
 }
 syscalls = numbers.get(platform.machine())
