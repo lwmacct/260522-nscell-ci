@@ -56,6 +56,7 @@ __retry() {
 __install_dependencies() {
   sudo apt-get update
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    apparmor \
     jq \
     libseccomp2 \
     python3 \
@@ -83,9 +84,32 @@ __setup_runtime_host() {
   __init_ci_dirs
   __install_nscell_binary
   __install_nscell_systemd_units
+  __configure_apparmor_fuse
   __configure_docker_runtime
   __restart_nscell_services
   echo "ci-setup-ok"
+}
+
+__configure_apparmor_fuse() {
+  local _profile="/etc/apparmor.d/fusermount3"
+  local _local_profile="/etc/apparmor.d/local/fusermount3"
+  local _temporary_profile
+
+  if ! sudo test -f "$_profile"; then
+    return 0
+  fi
+  __require_cmd apparmor_parser
+
+  sudo install -d -m 0755 /etc/apparmor.d/local
+  _temporary_profile="$(mktemp)"
+  cat >"$_temporary_profile" <<'EOF'
+# NSCell owns per-container FUSE mounts below this private root.
+mount fstype=@{fuse_types} options=(nosuid,nodev) options in (ro,rw,noatime,dirsync,nodiratime,noexec,sync) -> /var/lib/nscellfs/**/,
+umount /var/lib/nscellfs/**/,
+EOF
+  sudo install -m 0644 "$_temporary_profile" "$_local_profile"
+  rm -f "$_temporary_profile"
+  sudo apparmor_parser -r "$_profile"
 }
 
 __init_ci_dirs() {
