@@ -89,13 +89,19 @@ import platform
 import stat
 import sys
 
-numbers = {"x86_64": 428, "aarch64": 428}
-number = numbers.get(platform.machine())
-if number is None:
+numbers = {
+    "x86_64": {"open_tree": 428, "move_mount": 429},
+    "aarch64": {"open_tree": 428, "move_mount": 429},
+}
+syscalls = numbers.get(platform.machine())
+if syscalls is None:
     raise SystemExit(f"unsupported architecture: {platform.machine()}")
+number = syscalls["open_tree"]
 
 path = "/var/lib/docker/overlay2/nscell-ci/merged"
+target = "/var/lib/docker/overlay2/nscell-ci/attached"
 os.makedirs(path, exist_ok=True)
+os.makedirs(target, exist_ok=True)
 libc = ctypes.CDLL(None, use_errno=True)
 ctypes.set_errno(0)
 result = libc.syscall(
@@ -111,18 +117,45 @@ if result == -1:
 info = os.fstat(result)
 if not stat.S_ISSOCK(info.st_mode):
     raise SystemExit("authorized open_tree exposed a non-proxy descriptor", file=sys.stderr)
+move_mount = syscalls["move_mount"]
+ctypes.set_errno(0)
+move_result = libc.syscall(
+    ctypes.c_long(move_mount),
+    ctypes.c_int(result),
+    None,
+    ctypes.c_int(-100),
+    ctypes.c_char_p(target.encode()),
+    ctypes.c_uint(4),
+)
+move_errno = ctypes.get_errno()
+if move_result == -1:
+    print(f"authorized move_mount failed: errno={move_errno}", file=sys.stderr)
+    raise SystemExit(1)
+if not os.path.ismount(target):
+    print("authorized move_mount did not attach the mount", file=sys.stderr)
+    raise SystemExit(1)
+os.umount(target)
+if os.path.ismount(target):
+    print("authorized move_mount cleanup failed", file=sys.stderr)
+    raise SystemExit(1)
 os.close(result)
-print("new-mount-api-acquire-ok:proxy-socket")
+print("new-mount-api-acquire-ok:proxy-socket-and-attach")
 PY
   )"
   printf 'new-mount-acquire-output=%q\n' "$_acquire_output"
-  if [[ "$_acquire_output" != "new-mount-api-acquire-ok:proxy-socket" ]]; then
+  if [[ "$_acquire_output" != "new-mount-api-acquire-ok:proxy-socket-and-attach" ]]; then
     echo "authorized open_tree did not return a proxy descriptor" >&2
     exit 1
   fi
   if ! sudo grep -F 'New mount API tree capability issued: syscall=open_tree' \
     "$_daemon_log" >/dev/null; then
     echo "daemon did not record the authorized open_tree capability" >&2
+    sudo tail -100 "$_daemon_log" >&2
+    exit 1
+  fi
+  if ! sudo grep -F 'New mount API attach completed:' \
+    "$_daemon_log" >/dev/null; then
+    echo "daemon did not record the authorized move_mount completion" >&2
     sudo tail -100 "$_daemon_log" >&2
     exit 1
   fi
