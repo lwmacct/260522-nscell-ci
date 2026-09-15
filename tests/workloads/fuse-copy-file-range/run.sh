@@ -37,8 +37,8 @@ import os
 path = "/proc/sys/kernel/printk"
 result = open("/result", "w", encoding="ascii")
 try:
-    os.setegid(65534)
-    os.seteuid(65534)
+    os.setgid(65534)
+    os.setuid(65534)
     before = open(path, "rb").read()
     source = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
     destination = os.open(path, os.O_WRONLY | os.O_CLOEXEC)
