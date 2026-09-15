@@ -164,5 +164,5 @@ jobs:
       image_name: linux-6-12
       nscell_image: ${{ needs.changes.outputs.nscell_image }}
       suite: smoke
-      targets: kernel-capability-smoke
+      targets: kernel-capability-smoke,fuse-copy-file-range
     secrets: inherit
