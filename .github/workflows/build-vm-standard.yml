@@ -262,10 +262,6 @@ jobs:
                 _release="resolute"
                 _description="Test VM ${IMAGE_NAME}: Ubuntu 26.04 AMD64"
                 ;;
-              linux-6-12)
-                _release="trixie"
-                _description="Test VM ${IMAGE_NAME}: Debian 13 / Linux 6.12 AMD64"
-                ;;
               linux-6-18)
                 _release="trixie"
                 _description="Test VM ${IMAGE_NAME}: Debian 13 / Linux 6.18.52 AMD64"
@@ -330,9 +326,6 @@ jobs:
             case "${IMAGE_NAME}" in
               standard)
                 _description="Test VM ${IMAGE_NAME}: Ubuntu 26.04 AMD64"
-                ;;
-              linux-6-12)
-                _description="Test VM ${IMAGE_NAME}: Debian 13 / Linux 6.12 AMD64"
                 ;;
               linux-6-18)
                 _description="Test VM ${IMAGE_NAME}: Debian 13 / Linux 6.18.52 AMD64"

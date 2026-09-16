@@ -12,11 +12,15 @@ cd "$_repo_root"
 source "${_workload_dir}/library/env.sh"
 
 __require_kernel_floor() {
-  local _release _version_floor
+  local _profile _release _version_floor
 
   _release="$(uname -r)"
-  _version_floor="$(printf '%s\n%s\n' '6.12.0' "${_release%%-*}" | sort -V | head -1)"
-  [[ "${_version_floor}" == '6.12.0' ]]
+  _version_floor="$(printf '%s\n%s\n' '6.18.0' "${_release%%-*}" | sort -V | head -1)"
+  [[ "${_version_floor}" == '6.18.0' ]]
+  _profile="$(cat /etc/test-vm-profile 2>/dev/null || true)"
+  if [[ "${_profile}" == *"IMAGE_PROFILE=linux-6-18"* ]]; then
+    [[ "${_release}" == 6.18.52-061852-generic ]]
+  fi
 }
 
 __require_cgroup_v2() {
@@ -38,9 +42,11 @@ __probe_mount_namespace_apis() {
   sudo python3 - <<'PY'
 import ctypes
 import errno
+import fcntl
 import os
 import platform
 import struct
+import threading
 
 libc = ctypes.CDLL(None, use_errno=True)
 
@@ -98,6 +104,62 @@ try:
         raise SystemExit(f"invalid mount namespace info: {info.size} {info.nr_mounts} {info.mnt_ns_id}")
 finally:
     os.close(nsfd)
+
+pidfd_open_number = {"x86_64": 434, "aarch64": 434}.get(machine)
+if pidfd_open_number is None:
+    raise SystemExit(f"unsupported architecture for pidfd probe: {machine}")
+
+PIDFD_THREAD = 0x80
+thread_result = {}
+
+def probe_thread_pidfd():
+    tid = threading.get_native_id()
+    if tid == os.getpid():
+        raise RuntimeError("thread pidfd probe ran on the thread-group leader")
+    ctypes.set_errno(0)
+    thread_fd = libc.syscall(
+        ctypes.c_long(pidfd_open_number),
+        ctypes.c_int(tid),
+        ctypes.c_uint(PIDFD_THREAD),
+    )
+    if thread_fd == -1:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+    os.close(thread_fd)
+    thread_result["tid"] = tid
+
+thread = threading.Thread(target=probe_thread_pidfd)
+thread.start()
+thread.join()
+if "tid" not in thread_result:
+    raise SystemExit("PIDFD_THREAD probe did not return a thread identity")
+
+process_pidfd = syscall(
+    pidfd_open_number,
+    ctypes.c_int(os.getpid()),
+    ctypes.c_uint(0),
+)
+try:
+    PIDFD_GET_MNT_NAMESPACE = 0xFF03
+    pidfd_nsfd = fcntl.ioctl(process_pidfd, PIDFD_GET_MNT_NAMESPACE)
+    try:
+        pidfd_info = MntNSInfo()
+        if libc.ioctl(
+            ctypes.c_int(pidfd_nsfd),
+            ctypes.c_ulong(NS_MNT_GET_INFO),
+            ctypes.byref(pidfd_info),
+        ) != 0:
+            error = ctypes.get_errno()
+            raise OSError(error, os.strerror(error))
+        if pidfd_info.mnt_ns_id != info.mnt_ns_id:
+            raise SystemExit(
+                "pidfd mount namespace identity mismatch: "
+                f"{pidfd_info.mnt_ns_id} != {info.mnt_ns_id}"
+            )
+    finally:
+        os.close(pidfd_nsfd)
+finally:
+    os.close(process_pidfd)
 
 STATMOUNT_MNT_BASIC = 0x2
 STATMOUNT_MNT_NS_ID = 0x40
