@@ -23,6 +23,19 @@ Expected effect:
 - Reduce both base VM images before any image preset is added.
 - Make Python-base behavior deterministic while the preset experiment is pending.
 
+Validation:
+
+- Local Docker builds succeeded for all four Python-based workload images.
+- The `procfs-memory` image fell from roughly 433MB to 88MB.
+- Branch validation for all five Python-based VM targets succeeded:
+  [test run 35140157382](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35140157382).
+- Static checks, standard smoke, and the Linux 6.18 floor smoke succeeded:
+  [check run 35140175062](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35140175062).
+- In the validated run, `procfs-memory` image preparation fell from the roughly
+  116-second baseline to about 36 seconds. The other Python jobs still spend
+  36-60 seconds extracting the shared base image, which is the target of phase
+  two.
+
 ## Phase 2: experimental Python image preset
 
 Status: **not started**
