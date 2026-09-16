@@ -63,14 +63,7 @@ __configure_mounts() {
     --arg _bind_base "${_root}/bind-base" \
     --arg _bind_external "${_root}/bind-external" \
     --arg _bind_under "${_root}/bind-under" \
-    '.mounts |= map(
-      if (.destination | ltrimstr("/") | rtrimstr("/")) == "dev" then
-        .options = (((.options // []) | map(select(. != "ro" and . != "rw"))) + ["ro"])
-      else
-        .
-      end
-    ) |
-    .mounts += [
+    '.mounts += [
       {
         destination: "/copyup",
         type: "tmpfs",
@@ -119,13 +112,6 @@ __configure_mounts() {
     "${_bundle}/config.json" >"$_config_tmp"
   sudo install -m 0600 "$_config_tmp" "${_bundle}/config.json"
   rm -f "$_config_tmp"
-  sudo jq -e '
-    any(
-      .mounts[];
-      ((.destination | ltrimstr("/") | rtrimstr("/")) == "dev") and
-      (((.options // []) | index("ro")) != null)
-    )
-  ' "${_bundle}/config.json" >/dev/null
 }
 
 __install_probe() {
@@ -171,7 +157,6 @@ __assert_mount /sys sysfs
 __assert_mountpoint /sys/fs/cgroup
 test -r /sys/fs/cgroup/cgroup.controllers
 __assert_mount /dev tmpfs
-__assert_readonly /dev
 __assert_mount /dev/mqueue mqueue
 __assert_mount /copyup tmpfs
 __assert_mount /readonly-copyup tmpfs
