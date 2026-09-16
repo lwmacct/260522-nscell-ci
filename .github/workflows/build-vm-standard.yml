@@ -266,6 +266,10 @@ jobs:
                 _release="trixie"
                 _description="Test VM ${IMAGE_NAME}: Debian 13 / Linux 6.12 AMD64"
                 ;;
+              linux-6-18)
+                _release="trixie"
+                _description="Test VM ${IMAGE_NAME}: Debian 13 / Linux 6.18.52 AMD64"
+                ;;
               *)
                 echo "unsupported image profile: ${IMAGE_NAME}" >&2
                 return 2
@@ -329,6 +333,9 @@ jobs:
                 ;;
               linux-6-12)
                 _description="Test VM ${IMAGE_NAME}: Debian 13 / Linux 6.12 AMD64"
+                ;;
+              linux-6-18)
+                _description="Test VM ${IMAGE_NAME}: Debian 13 / Linux 6.18.52 AMD64"
                 ;;
               *)
                 echo "unsupported image profile: ${IMAGE_NAME}" >&2
