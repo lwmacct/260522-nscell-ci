@@ -295,7 +295,7 @@ __verify_gate() {
   sudo systemctl cat nscell-daemon.service
   sudo nscell daemon gate status
   sudo nscell daemon gate status |
-    jq -e '(.mode == "strict") and (.enabled == true) and (.enforce == true)'
+    jq -e '(.attached == true) and (.features.lsmActive == true) and (.auditEnabled == true)'
 }
 
 __assert_nscell_ready() {

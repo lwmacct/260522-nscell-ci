@@ -73,6 +73,20 @@ __check_retired_gate_mode() {
 	fi
 }
 
+__check_retired_gate_status_fields() {
+	local _matches
+
+	_matches="$(
+		git grep -n -I -E '\.(mode[[:space:]]*==[[:space:]]*"strict"|enabled[[:space:]]*==[[:space:]]*true|enforce[[:space:]]*==[[:space:]]*true)' -- \
+			'scripts/**' 'tests/**' || true
+	)"
+	if [[ -n "${_matches}" ]]; then
+		echo "retired BPF gate status field reference found:" >&2
+		printf '%s\n' "${_matches}" >&2
+		return 1
+	fi
+}
+
 __main() {
 	cd "${_repo_root}"
 	__require_command actionlint
@@ -84,6 +98,7 @@ __main() {
 	__check_python
 	__check_manifest
 	__check_retired_gate_mode
+	__check_retired_gate_status_fields
 	actionlint
 	git show --check --oneline HEAD >/dev/null
 	git diff --check

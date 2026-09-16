@@ -20,7 +20,7 @@ _identity_export_name="nscell-oci-export-identity${_workload_resource_id:+-${_wo
 
 __require_bpf_lsm() {
   if sudo nscell daemon gate status |
-    jq -e '.enabled == true and .mode == "strict" and .enforce == true and .features.lsmActive == true and .auditEnabled == true' >/dev/null; then
+    jq -e '.attached == true and .features.lsmActive == true and .auditEnabled == true' >/dev/null; then
     __log "strict BPF LSM policy and audit checks required"
     return
   fi
