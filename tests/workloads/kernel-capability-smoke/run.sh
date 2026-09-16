@@ -45,6 +45,7 @@ import errno
 import fcntl
 import os
 import platform
+import socket
 import struct
 import threading
 
@@ -108,6 +109,9 @@ finally:
 pidfd_open_number = {"x86_64": 434, "aarch64": 434}.get(machine)
 if pidfd_open_number is None:
     raise SystemExit(f"unsupported architecture for pidfd probe: {machine}")
+pidfd_getfd_number = {"x86_64": 438, "aarch64": 438}.get(machine)
+if pidfd_getfd_number is None:
+    raise SystemExit(f"unsupported architecture for pidfd_getfd probe: {machine}")
 
 PIDFD_THREAD = 0x80
 thread_result = {}
@@ -133,6 +137,78 @@ thread.start()
 thread.join()
 if "tid" not in thread_result:
     raise SystemExit("PIDFD_THREAD probe did not return a thread identity")
+
+probe_sockets = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+try:
+    source_fd = probe_sockets[0].fileno()
+
+    def socket_cookie(fd):
+        value = ctypes.c_uint64()
+        length = ctypes.c_uint32(ctypes.sizeof(value))
+        ctypes.set_errno(0)
+        result = libc.getsockopt(
+            ctypes.c_int(fd),
+            ctypes.c_int(socket.SOL_SOCKET),
+            ctypes.c_int(57),
+            ctypes.byref(value),
+            ctypes.byref(length),
+        )
+        if result != 0 or length.value != ctypes.sizeof(value) or value.value == 0:
+            raise RuntimeError(
+                "SO_COOKIE failed: "
+                f"result={result} errno={ctypes.get_errno()} length={length.value} value={value.value}"
+            )
+        return value.value
+
+    source_cookie = socket_cookie(source_fd)
+    getfd_result = {}
+
+    def probe_pidfd_getfd():
+        tid = threading.get_native_id()
+        if tid == os.getpid():
+            getfd_result["error"] = "pidfd_getfd probe ran on the thread-group leader"
+            return
+        ctypes.set_errno(0)
+        thread_pidfd = libc.syscall(
+            ctypes.c_long(pidfd_open_number),
+            ctypes.c_int(tid),
+            ctypes.c_uint(PIDFD_THREAD),
+        )
+        if thread_pidfd == -1:
+            getfd_result["error"] = f"thread pidfd open errno={ctypes.get_errno()}"
+            return
+        try:
+            ctypes.set_errno(0)
+            duplicate_fd = libc.syscall(
+                ctypes.c_long(pidfd_getfd_number),
+                ctypes.c_int(thread_pidfd),
+                ctypes.c_int(source_fd),
+                ctypes.c_uint(0),
+            )
+            if duplicate_fd == -1:
+                getfd_result["error"] = f"pidfd_getfd errno={ctypes.get_errno()}"
+                return
+            try:
+                duplicate_cookie = socket_cookie(duplicate_fd)
+                if duplicate_cookie != source_cookie:
+                    getfd_result["error"] = (
+                        f"SO_COOKIE mismatch source={source_cookie} duplicate={duplicate_cookie}"
+                    )
+                else:
+                    getfd_result["ok"] = True
+            finally:
+                os.close(duplicate_fd)
+        finally:
+            os.close(thread_pidfd)
+
+    getfd_thread = threading.Thread(target=probe_pidfd_getfd)
+    getfd_thread.start()
+    getfd_thread.join()
+    if "ok" not in getfd_result:
+        raise SystemExit(f"pidfd_getfd probe failed: {getfd_result.get('error', 'unknown error')}")
+finally:
+    probe_sockets[0].close()
+    probe_sockets[1].close()
 
 process_pidfd = syscall(
     pidfd_open_number,
@@ -220,7 +296,7 @@ os.close(pidfd)
 print(
     "kernel-capability-probe-ok "
     f"release={platform.release()} mount_id={mount_id} mount_ns={info.mnt_ns_id} "
-    f"mounts={info.nr_mounts} listed={count} pidfd=available"
+    f"mounts={info.nr_mounts} listed={count} pidfd=available pidfd_getfd=available"
 )
 PY
 }

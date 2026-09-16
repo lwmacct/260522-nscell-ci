@@ -40,6 +40,21 @@ __daemon_has_decision() {
     grep -F "profile=${_profile}" >/dev/null
 }
 
+__daemon_has_capability_identity() {
+  local _syscall_name="$1"
+  local _profile="$2"
+
+  sudo grep -F 'New mount API decision' "$_daemon_log" |
+    grep -F "syscall=${_syscall_name}" |
+    grep -F 'decision=allow' |
+    grep -F "profile=${_profile}" |
+    grep -F 'capabilityId=' |
+    grep -F 'callerTgid=' |
+    grep -F 'proxyFd=' |
+    grep -F 'socketCookie=' |
+    grep -F 'seccompFd=' >/dev/null
+}
+
 __run_deny_case() {
   local _profile="$1"
   local _output
@@ -167,7 +182,7 @@ __run_authorized_case() {
   local _target_path="$3"
   local _fs_target_path="$4"
   local _case_output
-  local _expected_output="new-mount-api-${_profile}-ok:proxy-attributes-attach"$'\n'"new-mount-api-${_profile}-ok:fs-context-attach"
+  local _expected_output="new-mount-api-${_profile}-ok:proxy-attributes-attach"$'\n'"new-mount-api-${_profile}-ok:fs-context-attach"$'\n'"new-mount-api-${_profile}-ok:thread-handoff"$'\n'"new-mount-api-${_profile}-ok:fork-transfer-denied"$'\n'"new-mount-api-${_profile}-ok:fd-reuse"$'\n'"new-mount-api-${_profile}-ok:multiprocess-same-fd"
   local _syscall_name
 
   __cleanup
@@ -190,6 +205,7 @@ import platform
 import stat
 import struct
 import sys
+import threading
 
 numbers = {
     "x86_64": {
@@ -226,6 +242,12 @@ fs_target = os.environ["CASE_FS_TARGET"]
 os.makedirs(path, exist_ok=True)
 os.makedirs(target, exist_ok=True)
 os.makedirs(fs_target, exist_ok=True)
+thread_target = f"{target}-thread"
+transfer_target = f"{target}-transfer"
+reuse_target = f"{target}-reuse"
+process_targets = [f"{target}-process-0", f"{target}-process-1"]
+for extra_target in [thread_target, transfer_target, reuse_target, *process_targets]:
+    os.makedirs(extra_target, exist_ok=True)
 libc = ctypes.CDLL(None, use_errno=True)
 mount_setattr = syscalls["mount_setattr"]
 
@@ -531,6 +553,173 @@ if fs_target not in open("/proc/self/mountinfo", encoding="utf-8").read():
 os.close(fsfd)
 os.close(mntfd)
 print(f"new-mount-api-{profile}-ok:fs-context-attach")
+
+
+def acquire_tree():
+    fd, errno = raw_syscall(
+        "open_tree",
+        ctypes.c_int(-100),
+        ctypes.c_char_p(path.encode()),
+        ctypes.c_uint(0x88001),
+    )
+    if fd == -1:
+        raise RuntimeError(f"open_tree failed: errno={errno}")
+    if not stat.S_ISSOCK(os.fstat(fd).st_mode):
+        raise RuntimeError("open_tree exposed a non-proxy descriptor")
+    return fd
+
+
+def attach_tree(fd, destination):
+    ctypes.set_errno(0)
+    attr_result = setattr_result(
+        fd,
+        0x1000,
+        struct.pack("=QQQQ", 0xF, 0, 0, 0),
+    )
+    if attr_result == -1:
+        raise RuntimeError(f"mount_setattr failed: errno={ctypes.get_errno()}")
+    moved, errno = raw_syscall(
+        "move_mount",
+        ctypes.c_int(fd),
+        None,
+        ctypes.c_int(-100),
+        ctypes.c_char_p(destination.encode()),
+        ctypes.c_uint(4),
+    )
+    if moved != 0:
+        raise RuntimeError(f"move_mount failed: result={moved} errno={errno}")
+
+
+def socket_cookie(fd):
+    value = ctypes.c_uint64()
+    length = ctypes.c_uint32(ctypes.sizeof(value))
+    ctypes.set_errno(0)
+    result = libc.getsockopt(
+        ctypes.c_int(fd),
+        ctypes.c_int(1),
+        ctypes.c_int(57),
+        ctypes.byref(value),
+        ctypes.byref(length),
+    )
+    if result != 0 or length.value != ctypes.sizeof(value) or value.value == 0:
+        raise RuntimeError(
+            f"SO_COOKIE failed: result={result} errno={ctypes.get_errno()} length={length.value} value={value.value}"
+        )
+    return value.value
+
+
+thread_result = {}
+
+
+def acquire_on_thread():
+    thread_result["tid"] = threading.get_native_id()
+    try:
+        thread_result["fd"] = acquire_tree()
+    except BaseException as exc:
+        thread_result["error"] = repr(exc)
+
+
+worker = threading.Thread(target=acquire_on_thread)
+worker.start()
+worker.join()
+if "error" in thread_result:
+    raise SystemExit(f"thread open_tree failed: {thread_result['error']}")
+if thread_result.get("tid") == os.getpid():
+    raise SystemExit("thread capability was issued by the thread-group leader")
+thread_fd = thread_result["fd"]
+thread_duplicate = os.dup(thread_fd)
+expect_deny(
+    "mount_setattr",
+    ctypes.c_int(thread_duplicate),
+    None,
+    ctypes.c_uint(0x1000),
+    struct.pack("=QQQQ", 1, 0, 0, 0),
+    ctypes.c_size_t(32),
+)
+os.close(thread_duplicate)
+attach_tree(thread_fd, thread_target)
+os.close(thread_fd)
+print(f"new-mount-api-{profile}-ok:thread-handoff")
+
+transfer_fd = acquire_tree()
+transfer_child = os.fork()
+if transfer_child == 0:
+    transfer_result, transfer_errno = raw_syscall(
+        "mount_setattr",
+        ctypes.c_int(transfer_fd),
+        None,
+        ctypes.c_uint(0x1000),
+        struct.pack("=QQQQ", 1, 0, 0, 0),
+        ctypes.c_size_t(32),
+    )
+    os._exit(0 if transfer_result == -1 and transfer_errno == 1 else 1)
+_, transfer_status = os.waitpid(transfer_child, 0)
+if not os.WIFEXITED(transfer_status) or os.WEXITSTATUS(transfer_status) != 0:
+    raise SystemExit("forked process used an inherited capability")
+attach_tree(transfer_fd, transfer_target)
+os.close(transfer_fd)
+print(f"new-mount-api-{profile}-ok:fork-transfer-denied")
+
+old_fd = acquire_tree()
+old_cookie = socket_cookie(old_fd)
+os.close(old_fd)
+new_fd = acquire_tree()
+new_cookie = socket_cookie(new_fd)
+if new_fd != old_fd:
+    raise SystemExit(f"proxy fd was not reused: old={old_fd} new={new_fd}")
+if new_cookie == old_cookie:
+    raise SystemExit(f"reused proxy fd retained socket cookie {new_cookie}")
+attach_tree(new_fd, reuse_target)
+os.close(new_fd)
+print(f"new-mount-api-{profile}-ok:fd-reuse")
+
+start_read, start_write = os.pipe()
+report_read, report_write = os.pipe()
+children = []
+for index in range(2):
+    child = os.fork()
+    if child == 0:
+        os.close(start_write)
+        os.close(report_read)
+        exit_code = 0
+        try:
+            if os.read(start_read, 1) != b"x":
+                raise RuntimeError("start barrier closed")
+            os.close(start_read)
+            process_fd = acquire_tree()
+            attach_tree(process_fd, process_targets[index])
+            os.write(report_write, f"{index}:{process_fd}\n".encode())
+            os.close(process_fd)
+        except BaseException as exc:
+            os.write(report_write, f"{index}:error:{exc!r}\n".encode())
+            exit_code = 1
+        os.close(report_write)
+        os._exit(exit_code)
+    children.append(child)
+
+os.close(start_read)
+os.close(report_write)
+os.write(start_write, b"xx")
+os.close(start_write)
+report = bytearray()
+while True:
+    chunk = os.read(report_read, 4096)
+    if not chunk:
+        break
+    report.extend(chunk)
+os.close(report_read)
+for child in children:
+    _, child_status = os.waitpid(child, 0)
+    if not os.WIFEXITED(child_status) or os.WEXITSTATUS(child_status) != 0:
+        raise SystemExit(f"multiprocess capability child failed: {report.decode()!r}")
+
+records = sorted(line.split(":") for line in report.decode().splitlines())
+if len(records) != 2 or any(len(record) != 2 for record in records):
+    raise SystemExit(f"invalid multiprocess capability report: {records!r}")
+process_fds = [int(record[1]) for record in records]
+if process_fds[0] != process_fds[1]:
+    raise SystemExit(f"processes received different guest fds: {process_fds!r}")
+print(f"new-mount-api-{profile}-ok:multiprocess-same-fd")
 PY
   )"
   printf 'new-mount-api-authorized-output[%s]=%q\n' "$_profile" "$_case_output"
@@ -542,6 +731,13 @@ PY
   for _syscall_name in open_tree fsopen fsconfig fsmount mount_setattr move_mount listmount statmount; do
     if ! __daemon_has_decision "$_syscall_name" allow "$_profile"; then
       echo "daemon did not record structured ${_profile} allow for ${_syscall_name}" >&2
+      sudo tail -100 "$_daemon_log" >&2
+      return 1
+    fi
+  done
+  for _syscall_name in open_tree fsopen fsconfig fsmount mount_setattr move_mount; do
+    if ! __daemon_has_capability_identity "$_syscall_name" "$_profile"; then
+      echo "daemon did not record ${_profile} capability identity for ${_syscall_name}" >&2
       sudo tail -100 "$_daemon_log" >&2
       return 1
     fi

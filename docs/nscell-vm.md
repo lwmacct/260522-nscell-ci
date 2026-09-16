@@ -8,7 +8,7 @@ Two profiles are maintained:
 
 - `images/standard.yaml` is Ubuntu 26.04 with `linux-image-virtual-hwe-26.04`.
   It provides broad current-kernel workload coverage.
-- `images/linux-6-12.yaml` is Debian 13 with the stable 6.12 kernel. It is the
+- `images/linux-6-18.yaml` is Debian 13 with the stable 6.18 kernel. It is the
   exact floor gate and is used for `kernel-capability-smoke`.
 
 Both contain the Incus VM agent, the Docker runtime stack, FUSE and idmap
@@ -44,7 +44,7 @@ The artifact contains `incus.tar.xz`, `disk.qcow2`, and `SHA256SUMS`.
   paying the nested VM startup cost.
 - The special `smoke` target checks BPF LSM, nscell daemon readiness, Docker
   runtime registration, and one `busybox` container.
-- Release validation also runs `kernel-capability-smoke` on the Debian 6.12
+- Release validation also runs `kernel-capability-smoke` on the Debian 6.18
   floor profile. A current-kernel standard VM run cannot replace that gate.
 
 Both test workflows accept `nscell_image`. The nscell release workflow passes
