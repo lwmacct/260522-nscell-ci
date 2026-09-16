@@ -45,6 +45,7 @@ import errno
 import fcntl
 import os
 import platform
+import signal
 import socket
 import struct
 import threading
@@ -112,6 +113,9 @@ if pidfd_open_number is None:
 pidfd_getfd_number = {"x86_64": 438, "aarch64": 438}.get(machine)
 if pidfd_getfd_number is None:
     raise SystemExit(f"unsupported architecture for pidfd_getfd probe: {machine}")
+clone3_number = {"x86_64": 435, "aarch64": 435}.get(machine)
+if clone3_number is None:
+    raise SystemExit(f"unsupported architecture for clone3 probe: {machine}")
 
 PIDFD_THREAD = 0x80
 thread_result = {}
@@ -237,6 +241,64 @@ try:
 finally:
     os.close(process_pidfd)
 
+class CloneArgs(ctypes.Structure):
+    _fields_ = [
+        ("flags", ctypes.c_uint64),
+        ("pidfd", ctypes.c_uint64),
+        ("child_tid", ctypes.c_uint64),
+        ("parent_tid", ctypes.c_uint64),
+        ("exit_signal", ctypes.c_uint64),
+        ("stack", ctypes.c_uint64),
+        ("stack_size", ctypes.c_uint64),
+        ("tls", ctypes.c_uint64),
+        ("set_tid", ctypes.c_uint64),
+        ("set_tid_size", ctypes.c_uint64),
+        ("cgroup", ctypes.c_uint64),
+    ]
+
+current_cgroup = None
+with open("/proc/self/cgroup", encoding="utf-8") as cgroup_file:
+    for line in cgroup_file:
+        hierarchy, controllers, path = line.rstrip("\n").split(":", 2)
+        if hierarchy == "0" and controllers == "":
+            current_cgroup = os.path.join("/sys/fs/cgroup", path.lstrip("/"))
+            break
+if current_cgroup is None:
+    raise SystemExit("current process has no cgroup v2 membership")
+
+CLONE_PIDFD = 0x00001000
+CLONE_INTO_CGROUP = 0x200000000
+clone_pidfd = ctypes.c_int(-1)
+cgroup_fd = os.open(current_cgroup, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+try:
+    clone_args = CloneArgs(
+        flags=CLONE_PIDFD | CLONE_INTO_CGROUP,
+        pidfd=ctypes.addressof(clone_pidfd),
+        exit_signal=signal.SIGCHLD,
+        cgroup=cgroup_fd,
+    )
+    ctypes.set_errno(0)
+    clone_pid = libc.syscall(
+        ctypes.c_long(clone3_number),
+        ctypes.byref(clone_args),
+        ctypes.c_size_t(ctypes.sizeof(clone_args)),
+    )
+    if clone_pid == 0:
+        os._exit(0)
+    if clone_pid == -1:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+    if clone_pidfd.value < 0:
+        raise SystemExit("clone3 did not return a pidfd")
+    try:
+        waited_pid, status = os.waitpid(clone_pid, 0)
+        if waited_pid != clone_pid or not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0:
+            raise SystemExit(f"clone3 child status invalid: pid={waited_pid} status={status}")
+    finally:
+        os.close(clone_pidfd.value)
+finally:
+    os.close(cgroup_fd)
+
 STATMOUNT_MNT_BASIC = 0x2
 STATMOUNT_MNT_NS_ID = 0x40
 statmount_buffer = ctypes.create_string_buffer(512)
@@ -296,7 +358,8 @@ os.close(pidfd)
 print(
     "kernel-capability-probe-ok "
     f"release={platform.release()} mount_id={mount_id} mount_ns={info.mnt_ns_id} "
-    f"mounts={info.nr_mounts} listed={count} pidfd=available pidfd_getfd=available"
+    f"mounts={info.nr_mounts} listed={count} pidfd=available pidfd_getfd=available "
+    "clone3_cgroup=available"
 )
 PY
 }
