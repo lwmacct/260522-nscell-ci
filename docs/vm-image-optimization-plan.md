@@ -59,6 +59,11 @@ Validation:
   [test run 35143078526](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35143078526).
 - The same qcow2 then passed the complete 21-target VM gate:
   [gate run 35143574513](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35143574513).
+- After promotion into `standard`, the final warmed standard artifact built and
+  published successfully:
+  [build run 35144286764](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35144286764).
+  Its qcow2 is 676,790,784 bytes with immutable VM artifact digest
+  `sha256:fb8a73b9957de072bb714d601749447c4fccd8fbef3d8d09a5c4bab40748d65c`.
 
 Measurements:
 
