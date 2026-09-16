@@ -111,38 +111,48 @@ __install_probe() {
 #!/bin/sh
 set -eu
 
-assert_mount() {
-  mountpoint="$1"
-  filesystem="$2"
-  awk -v target="$mountpoint" -v fstype="$filesystem" '
-    $5 == target && $9 == fstype { found = 1 }
-    END { exit !found }
+__assert_mount() {
+  _mountpoint="$1"
+  _filesystem="$2"
+  awk -v _target="$_mountpoint" -v _fstype="$_filesystem" '
+    $5 == _target {
+      for (_field = 7; _field < NF; _field++) {
+        if ($_field == "-") {
+          if ($(_field + 1) == _fstype) {
+            _found = 1
+          }
+          break
+        }
+      }
+    }
+    END { exit !_found }
   ' /proc/self/mountinfo
 }
 
-assert_mountpoint() {
-  mountpoint="$1"
-  awk -v target="$mountpoint" '$5 == target { found = 1 } END { exit !found }' \
+__assert_mountpoint() {
+  _mountpoint="$1"
+  awk -v _target="$_mountpoint" \
+    '$5 == _target { _found = 1 } END { exit !_found }' \
     /proc/self/mountinfo
 }
 
-assert_readonly() {
-  mountpoint="$1"
-  awk -v target="$mountpoint" '
-    $5 == target && $6 ~ /(^|,)ro(,|$)/ { found = 1 }
-    END { exit !found }
+__assert_readonly() {
+  _mountpoint="$1"
+  awk -v _target="$_mountpoint" '
+    $5 == _target && $6 ~ /(^|,)ro(,|$)/ { _found = 1 }
+    END { exit !_found }
   ' /proc/self/mountinfo
 }
 
-assert_mount /proc proc
-assert_mount /sys sysfs
-assert_mountpoint /sys/fs/cgroup
+__assert_mount /proc proc
+__assert_mount /sys sysfs
+__assert_mountpoint /sys/fs/cgroup
 test -r /sys/fs/cgroup/cgroup.controllers
-assert_mount /dev tmpfs
-assert_mount /dev/mqueue mqueue
-assert_mount /copyup tmpfs
-assert_mount /readonly-overlay overlay
-assert_readonly /readonly-overlay
+__assert_mount /dev tmpfs
+__assert_mount /dev/mqueue mqueue
+__assert_mount /copyup tmpfs
+__assert_mount /readonly-overlay overlay
+__assert_readonly /readonly-overlay
 
 [ "$(cat /copyup/seed)" = seed ]
 printf runtime > /copyup/runtime
