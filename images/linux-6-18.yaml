@@ -1278,6 +1278,9 @@ actions:
     KERNEL_MODULES_SHA256="2f1aa24d5af811c957b4b5245d4c1ac77a1c8675792878a1dd4c1116818e9aec"
     KERNEL_WORKDIR="/tmp/nscell-linux-6.18.52"
 
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      wireless-regdb
     install -d -m 0755 "${KERNEL_WORKDIR}"
     curl -fsSL "${KERNEL_BASE_URL}/${KERNEL_IMAGE}" \
       -o "${KERNEL_WORKDIR}/${KERNEL_IMAGE}"
