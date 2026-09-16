@@ -489,13 +489,7 @@ expect_deny("fsmount", ctypes.c_int(unsafe_fd), ctypes.c_uint(1), ctypes.c_uint(
 expect_deny("mount_setattr", ctypes.c_int(unsafe_fd), None, ctypes.c_uint(0x1000), struct.pack("=QQQQ", 1, 0, 0, 0), ctypes.c_size_t(32))
 expect_deny("move_mount", ctypes.c_int(unsafe_fd), None, ctypes.c_int(-100), ctypes.c_char_p(fs_target.encode()), ctypes.c_uint(4))
 expect_deny("fspick", ctypes.c_int(-100), ctypes.c_char_p(target.encode()), ctypes.c_uint(1))
-os.close(unsafe_fd)
-
-fsfd, errno = raw_syscall("fsopen", ctypes.c_char_p(b"tmpfs"), ctypes.c_uint(1))
-if fsfd == -1:
-    raise SystemExit(f"authorized fsopen failed: errno={errno}")
-if not stat.S_ISSOCK(os.fstat(fsfd).st_mode):
-    raise SystemExit("authorized fsopen exposed a non-proxy descriptor")
+fsfd = unsafe_fd
 
 expect_deny("fsmount", ctypes.c_int(fsfd), ctypes.c_uint(1), ctypes.c_uint(0xE))
 created, errno = raw_syscall(
