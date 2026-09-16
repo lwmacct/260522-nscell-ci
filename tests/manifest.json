@@ -6,7 +6,7 @@
     {"name":"daemon-crash-recovery","kind":"workload","modes":{"host":{"suites":["gate","full"],"timeout_minutes":45},"vm":{"suites":["full"],"timeout_minutes":60}}},
     {"name":"daemon-dial-retry","kind":"workload","modes":{"host":{"suites":["full"],"timeout_minutes":45},"vm":{"suites":["gate","full"],"timeout_minutes":60}}},
     {"name":"daemon-fail-stop","kind":"workload","modes":{"host":{"suites":["gate","full"],"timeout_minutes":45},"vm":{"suites":["full"],"timeout_minutes":60}}},
-    {"name":"docker-in-docker","kind":"workload","modes":{"host":{"suites":["full"],"timeout_minutes":90},"vm":{"suites":["gate","full"],"timeout_minutes":90}}},
+    {"name":"docker-in-docker","kind":"workload","modes":{"host":{"suites":["full"],"timeout_minutes":90},"vm":{"suites":["gate","full"],"timeout_minutes":10}}},
     {"name":"kubernetes-k3s","kind":"workload","modes":{"host":{"suites":["full"],"timeout_minutes":90},"vm":{"suites":["gate","full"],"timeout_minutes":90}}},
     {"name":"oci-lifecycle","kind":"workload","modes":{"host":{"suites":["smoke","gate","full"],"timeout_minutes":45},"vm":{"suites":["full"],"timeout_minutes":60}}},
     {"name":"oci-mount-semantics","kind":"workload","modes":{"host":{"suites":["gate","full"],"timeout_minutes":45},"vm":{"suites":["gate","full"],"timeout_minutes":60}}},
