@@ -1297,7 +1297,6 @@ actions:
     test -d /lib/modules/6.18.52-061852-generic
     update-initramfs -c -k 6.18.52-061852-generic || \
       update-initramfs -u -k 6.18.52-061852-generic
-    update-grub
   releases:
   - trixie
   architectures:
