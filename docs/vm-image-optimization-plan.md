@@ -35,16 +35,20 @@ Validation:
   116-second baseline to about 36 seconds. The other Python jobs still spend
   36-60 seconds extracting the shared base image, which is the target of phase
   two.
+- Dry-run builds of both trimmed production profiles succeeded without
+  publishing:
+  [build run 35140713300](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35140713300).
+  The standard and Linux-floor jobs completed in approximately 5m42s and 4m41s.
 
 ## Phase 2: experimental Python image preset
 
-Status: **not started**
+Status: **in progress**
 
-Create a separate experimental profile rather than enlarging `standard`
-immediately. The candidate profile must contain the already-unpacked Docker
-image store for the pinned Python digest. Storing only an OCI archive and
-loading it on every boot would move, rather than remove, the expensive
-extraction step.
+`standard-pycache` is a separate experimental profile rather than an immediate
+enlargement of `standard`. Its build boots a candidate VM, pulls the pinned
+Python digest into Docker, cleans first-boot state, and republishes the
+already-unpacked disk. This intentionally avoids storing only an OCI archive
+that would still need extraction on every boot.
 
 Measure against the phase-one baseline:
 

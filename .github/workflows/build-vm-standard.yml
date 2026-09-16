@@ -40,6 +40,7 @@ env:
   ORAS_VERSION: 1.3.3
   ARCHITECTURE: amd64
   VARIANT: default
+  PYTHON_IMAGE: docker.io/library/python:3.12-alpine@sha256:b64631e04e4920160c50fbe8d8df828f7f35f06f425cb44aa09bca53e708a35a
 
 jobs:
   prepare:
@@ -267,6 +268,10 @@ jobs:
                 _release="resolute"
                 _description="Test VM ${IMAGE_NAME}: Ubuntu 26.04 AMD64"
                 ;;
+              standard-pycache)
+                _release="resolute"
+                _description="Test VM ${IMAGE_NAME}: Ubuntu 26.04 AMD64"
+                ;;
               linux-6-18)
                 _release="trixie"
                 _description="Test VM ${IMAGE_NAME}: Debian 13 / Linux 6.18.52 AMD64"
@@ -294,12 +299,109 @@ jobs:
 
           __main "$@"
 
+      - name: Setup Incus for Python image cache
+        if: matrix.image == 'standard-pycache'
+        id: incus
+        uses: ./.github/actions/setup-incus
+
+      - name: Warm Python image cache
+        if: matrix.image == 'standard-pycache'
+        env:
+          VM_CPU: ${{ steps.incus.outputs.vm_cpu_count }}
+          VM_MEMORY: ${{ steps.incus.outputs.vm_memory_limit }}
+        run: |
+          __wait_for_guest() {
+            local _attempt
+
+            for _attempt in $(seq 1 60); do
+              if sudo incus exec "${_vm_name}" -- sh -c \
+                'docker info >/dev/null 2>&1 && test -f /etc/test-vm-profile' >/dev/null 2>&1; then
+                return 0
+              fi
+              sleep 5
+            done
+
+            echo "Python cache warming VM did not become ready" >&2
+            return 1
+          }
+
+          __cleanup() {
+            sudo incus delete --force "${_vm_name}" >/dev/null 2>&1 || true
+            sudo incus image delete "${_base_alias}" >/dev/null 2>&1 || true
+            sudo incus image delete "${_warmed_alias}" >/dev/null 2>&1 || true
+          }
+
+          __main() {
+            local _artifact_dir _export_dir _disk _disk_size
+
+            set -euo pipefail
+            _artifact_dir="${RUNNER_TEMP}/${OUTPUT_DIR_NAME}"
+            _export_dir="${RUNNER_TEMP}/${OUTPUT_DIR_NAME}-warmed"
+            _resource_id="warm-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
+            _vm_name="nscell-image-${_resource_id}"
+            _base_alias="nscell-image-base-${_resource_id}"
+            _warmed_alias="nscell-image-warmed-${_resource_id}"
+            trap __cleanup EXIT
+
+            mkdir -p "${_export_dir}"
+            sudo incus image import \
+              "${_artifact_dir}/incus.tar.xz" \
+              "${_artifact_dir}/disk.qcow2" \
+              --alias "${_base_alias}"
+            sudo incus init "${_base_alias}" "${_vm_name}" \
+              --vm \
+              -c security.secureboot=false \
+              -c limits.cpu="${VM_CPU}" \
+              -c limits.memory="${VM_MEMORY}"
+            sudo incus start "${_vm_name}"
+            __wait_for_guest
+
+            sudo incus exec "${_vm_name}" -- \
+              docker pull --platform linux/amd64 "${PYTHON_IMAGE}"
+            sudo incus exec "${_vm_name}" -- \
+              docker image inspect "${PYTHON_IMAGE}" --format '{{.Id}}'
+            sudo incus exec "${_vm_name}" -- sh -c '
+              : >/etc/machine-id
+              rm -f /var/lib/dbus/machine-id /var/lib/systemd/random-seed
+              find /var/log -type f -exec truncate -s 0 {} +
+            '
+            sudo incus stop "${_vm_name}"
+
+            sudo incus publish "${_vm_name}" \
+              --format split \
+              --compression xz \
+              --alias "${_warmed_alias}" \
+              --reuse
+            sudo incus image export "${_warmed_alias}" "${_export_dir}" --vm
+            sudo chown -R "$(id -u):$(id -g)" "${_export_dir}"
+
+            _disk="$(find "${_export_dir}" -maxdepth 1 -type f -name '*.qcow2' -print -quit)"
+            [[ -n "${_disk}" ]]
+            mv "${_artifact_dir}/disk.qcow2" "${_artifact_dir}/disk.qcow2.distrobuilder"
+            mv "${_disk}" "${_artifact_dir}/disk.qcow2"
+            _disk_size="$(stat -c '%s' "${_artifact_dir}/disk.qcow2")"
+            {
+              echo "## Warmed Python image cache"
+              echo
+              echo "- Image: \`${PYTHON_IMAGE}\`"
+              echo "- Warmed disk size: \`${_disk_size}\` bytes"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          }
+
+          __main "$@"
+
       - name: Check VM artifact files
         run: |
           __main() {
             set -euo pipefail
             test -s "${RUNNER_TEMP}/${OUTPUT_DIR_NAME}/incus.tar.xz"
             test -s "${RUNNER_TEMP}/${OUTPUT_DIR_NAME}/disk.qcow2"
+            stat -c '%n %s bytes' \
+              "${RUNNER_TEMP}/${OUTPUT_DIR_NAME}/incus.tar.xz" \
+              "${RUNNER_TEMP}/${OUTPUT_DIR_NAME}/disk.qcow2"
+            qemu-img info --output=json \
+              "${RUNNER_TEMP}/${OUTPUT_DIR_NAME}/disk.qcow2" |
+              jq '{filename,format,virtual_size,actual_size}'
             qemu-img check "${RUNNER_TEMP}/${OUTPUT_DIR_NAME}/disk.qcow2"
           }
 
@@ -331,6 +433,9 @@ jobs:
             set -euo pipefail
             case "${IMAGE_NAME}" in
               standard)
+                _description="Test VM ${IMAGE_NAME}: Ubuntu 26.04 AMD64"
+                ;;
+              standard-pycache)
                 _description="Test VM ${IMAGE_NAME}: Ubuntu 26.04 AMD64"
                 ;;
               linux-6-18)

@@ -4,12 +4,18 @@ This repository owns dedicated AMD64 Incus VM images for NSCell runtime
 validation. The images are built with `distrobuilder`, while the runner installs
 Incus from the signed Zabbly source at `pkgs.zabbly.com`.
 
-Two profiles are maintained:
+Two production profiles are maintained:
 
 - `images/standard.yaml` is Ubuntu 26.04 with `linux-image-virtual-hwe-26.04`.
   It provides broad current-kernel workload coverage.
 - `images/linux-6-18.yaml` is Debian 13 with the stable 6.18 kernel. It is the
   exact floor gate and is used for `kernel-capability-smoke`.
+
+`images/standard-pycache.yaml` is an experimental copy of the standard profile.
+Its build workflow boots the candidate once, pulls the pinned Python base image
+into Docker, and republishes the warmed qcow2 disk as a split Incus VM image.
+It is not used by release validation until its size and runtime measurements
+satisfy the optimization plan.
 
 Both contain the Incus VM agent, the Docker runtime stack, FUSE and idmap
 utilities, diagnostics, and a guest GRUB command line that enables the BPF LSM.
