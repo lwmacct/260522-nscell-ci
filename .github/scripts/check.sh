@@ -57,6 +57,34 @@ __check_manifest() {
 	done
 }
 
+__check_python_image_pin() {
+	local _references _digest
+	local -a _digests=()
+
+	_references="$(
+		git grep -n -I 'python:3\.12-alpine' -- \
+			'tests/library/env.sh' \
+			'tests/workloads/*/Dockerfile' || true
+	)"
+	[[ -n "${_references}" ]]
+
+	while IFS= read -r _reference; do
+		if [[ ! "${_reference}" =~ @sha256:[0-9a-f]{64} ]]; then
+			echo "unpinned Python base image reference: ${_reference}" >&2
+			return 1
+		fi
+	done <<<"${_references}"
+
+	mapfile -t _digests < <(
+		sed -n 's/.*\(sha256:[0-9a-f]\{64\}\).*/\1/p' <<<"${_references}" |
+			sort -u
+	)
+	if ((${#_digests[@]} != 1)); then
+		echo "Python base image references do not share one digest" >&2
+		return 1
+	fi
+}
+
 __check_retired_gate_mode() {
 	local _matches
 
@@ -97,6 +125,7 @@ __main() {
 	__check_shell
 	__check_python
 	__check_manifest
+	__check_python_image_pin
 	__check_retired_gate_mode
 	__check_retired_gate_status_fields
 	actionlint

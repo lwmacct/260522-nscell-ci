@@ -17,6 +17,11 @@ They do not contain an NSCell binary; each test workflow accepts an nscell OCI
 image, extracts its AMD64 binary on the GitHub runner, and exposes it to a
 disposable VM through a read-only Incus disk share.
 
+The profiles intentionally omit a guest compiler toolchain. Runtime workloads
+must not depend on building probes inside the guest; the staged plan for a
+possible Python image preset is tracked in
+[`vm-image-optimization-plan.md`](vm-image-optimization-plan.md).
+
 The image workflow publishes a commit-addressed candidate such as:
 
 ```text

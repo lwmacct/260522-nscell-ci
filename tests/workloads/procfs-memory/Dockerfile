@@ -1,7 +1,5 @@
-ARG BASE_IMAGE=docker.io/library/python:3.12-alpine
+ARG BASE_IMAGE=docker.io/library/python:3.12-alpine@sha256:b64631e04e4920160c50fbe8d8df828f7f35f06f425cb44aa09bca53e708a35a
 FROM ${BASE_IMAGE}
-
-RUN apk add --no-cache build-base
 
 COPY probe.py /usr/local/bin/nscell-ci-procfs-memory-probe
 RUN chmod +x /usr/local/bin/nscell-ci-procfs-memory-probe

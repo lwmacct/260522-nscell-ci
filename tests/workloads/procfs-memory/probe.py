@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
+import ctypes
 import os
 import select
 import signal
-import shutil
 import subprocess
 import sys
 import textwrap
@@ -10,7 +10,34 @@ import time
 
 
 CGROUP_ROOT = "/sys/fs/cgroup"
-SYSINFO_BINARY = None
+
+
+class SysInfo(ctypes.Structure):
+    _fields_ = [
+        ("uptime", ctypes.c_long),
+        ("loads", ctypes.c_ulong * 3),
+        ("totalram", ctypes.c_ulong),
+        ("freeram", ctypes.c_ulong),
+        ("sharedram", ctypes.c_ulong),
+        ("bufferram", ctypes.c_ulong),
+        ("totalswap", ctypes.c_ulong),
+        ("freeswap", ctypes.c_ulong),
+        ("procs", ctypes.c_ushort),
+        ("pad", ctypes.c_ushort),
+        ("totalhigh", ctypes.c_ulong),
+        ("freehigh", ctypes.c_ulong),
+        ("mem_unit", ctypes.c_uint),
+        (
+            "_reserved",
+            ctypes.c_char
+            * (20 - 2 * ctypes.sizeof(ctypes.c_long) - ctypes.sizeof(ctypes.c_uint)),
+        ),
+    ]
+
+
+libc = ctypes.CDLL(None, use_errno=True)
+libc.sysinfo.argtypes = [ctypes.POINTER(SysInfo)]
+libc.sysinfo.restype = ctypes.c_int
 
 
 def read_text(path):
@@ -119,56 +146,21 @@ def assert_visible_swaps(expected_swap_total_kib=None):
     return swap_total_kib, swap_free_kib, entries
 
 
-def compile_sysinfo_probe():
-    global SYSINFO_BINARY
-    if SYSINFO_BINARY is not None:
-        return SYSINFO_BINARY
-
-    compiler = shutil.which("cc")
-    if compiler is None:
-        raise RuntimeError("cc is required for sysinfo validation")
-
-    source = "/tmp/nscell-ci-sysinfo-probe.c"
-    binary = "/tmp/nscell-ci-sysinfo-probe"
-    with open(source, "w", encoding="utf-8") as file:
-        file.write(
-            r"""
-#include <stdio.h>
-#include <sys/sysinfo.h>
-
-int main(void) {
-    struct sysinfo info;
-    if (sysinfo(&info) != 0) {
-        perror("sysinfo");
-        return 1;
-    }
-
-    printf("sysinfo totalram=%llu freeram=%llu totalswap=%llu freeswap=%llu mem_unit=%u\n",
-           (unsigned long long)info.totalram * info.mem_unit,
-           (unsigned long long)info.freeram * info.mem_unit,
-           (unsigned long long)info.totalswap * info.mem_unit,
-           (unsigned long long)info.freeswap * info.mem_unit,
-           info.mem_unit);
-    return 0;
-}
-"""
-        )
-    subprocess.run([compiler, source, "-o", binary], check=True)
-    SYSINFO_BINARY = binary
-    return binary
-
-
 def read_sysinfo():
-    binary = compile_sysinfo_probe()
-    result = subprocess.run([binary], check=True, capture_output=True, text=True)
-    output = result.stdout.strip()
-    print(output)
+    info = SysInfo()
+    if libc.sysinfo(ctypes.byref(info)) != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, "sysinfo")
 
-    return dict(
-        field.split("=", 1)
-        for field in output.split()
-        if "=" in field
-    )
+    fields = {
+        "totalram": info.totalram * info.mem_unit,
+        "freeram": info.freeram * info.mem_unit,
+        "totalswap": info.totalswap * info.mem_unit,
+        "freeswap": info.freeswap * info.mem_unit,
+        "mem_unit": info.mem_unit,
+    }
+    print(" ".join(f"{name}={value}" for name, value in fields.items()))
+    return fields
 
 
 def assert_sysinfo_memory(expected_memory_bytes, expected_swap_bytes=None, expected_free_swap_bytes=None):
