@@ -64,7 +64,7 @@ __configure_mounts() {
     --arg _bind_external "${_root}/bind-external" \
     --arg _bind_under "${_root}/bind-under" \
     '.mounts |= map(
-      if .destination == "/dev" then
+      if (.destination | ltrimstr("/") | rtrimstr("/")) == "dev" then
         .options = (((.options // []) | map(select(. != "ro" and . != "rw"))) + ["ro"])
       else
         .
@@ -119,6 +119,13 @@ __configure_mounts() {
     "${_bundle}/config.json" >"$_config_tmp"
   sudo install -m 0600 "$_config_tmp" "${_bundle}/config.json"
   rm -f "$_config_tmp"
+  sudo jq -e '
+    any(
+      .mounts[];
+      ((.destination | ltrimstr("/") | rtrimstr("/")) == "dev") and
+      (((.options // []) | index("ro")) != null)
+    )
+  ' "${_bundle}/config.json" >/dev/null
 }
 
 __install_probe() {
