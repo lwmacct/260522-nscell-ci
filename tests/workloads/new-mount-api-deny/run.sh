@@ -566,7 +566,7 @@ PY
     grep -F 'syscall=fsmount' |
     grep -F 'decision=deny' |
     grep -F "profile=${_profile}" |
-    grep -F 'attrFlags=1048576' >/dev/null; then
+    grep -F 'attrFlags=0x100000' >/dev/null; then
     echo "daemon did not record idmap fsmount denial for ${_profile}" >&2
     sudo tail -100 "$_daemon_log" >&2
     return 1
