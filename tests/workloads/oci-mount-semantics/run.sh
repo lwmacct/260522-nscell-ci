@@ -37,10 +37,12 @@ __prepare_rootfs() {
     "${_root}/overlay-upper" \
     "${_root}/overlay-work/work" \
     "${_rootfs}/copyup" \
+    "${_rootfs}/readonly-copyup" \
     "${_rootfs}/run" \
     "${_rootfs}/mnt" \
     "${_rootfs}/shm-target"
   printf '%s\n' seed | sudo tee "${_rootfs}/copyup/seed" >/dev/null
+  printf '%s\n' readonly-seed | sudo tee "${_rootfs}/readonly-copyup/seed" >/dev/null
   printf '%s\n' lower-file | sudo tee "${_root}/overlay-lower/lower-file" >/dev/null
   printf '%s\n' bind-base | sudo tee "${_root}/bind-base/bind-base-file" >/dev/null
   printf '%s\n' bind-external | sudo tee "${_root}/bind-external/bind-external-file" >/dev/null
@@ -61,12 +63,25 @@ __configure_mounts() {
     --arg _bind_base "${_root}/bind-base" \
     --arg _bind_external "${_root}/bind-external" \
     --arg _bind_under "${_root}/bind-under" \
-    '.mounts += [
+    '.mounts |= map(
+      if .destination == "/dev" then
+        .options = (((.options // []) | map(select(. != "ro" and . != "rw"))) + ["ro"])
+      else
+        .
+      end
+    ) |
+    .mounts += [
       {
         destination: "/copyup",
         type: "tmpfs",
         source: "tmpfs",
         options: ["nosuid", "nodev", "mode=1777", "size=65536k", "tmpcopyup"]
+      },
+      {
+        destination: "/readonly-copyup",
+        type: "tmpfs",
+        source: "tmpfs",
+        options: ["nosuid", "nodev", "mode=1777", "size=65536k", "tmpcopyup", "ro"]
       },
       {
         destination: "/readonly-overlay",
@@ -149,13 +164,22 @@ __assert_mount /sys sysfs
 __assert_mountpoint /sys/fs/cgroup
 test -r /sys/fs/cgroup/cgroup.controllers
 __assert_mount /dev tmpfs
+__assert_readonly /dev
 __assert_mount /dev/mqueue mqueue
 __assert_mount /copyup tmpfs
+__assert_mount /readonly-copyup tmpfs
+__assert_readonly /readonly-copyup
 __assert_mount /readonly-overlay overlay
 __assert_readonly /readonly-overlay
 
 [ "$(cat /copyup/seed)" = seed ]
 printf runtime > /copyup/runtime
+[ "$(cat /readonly-copyup/seed)" = readonly-seed ]
+if echo rejected > /readonly-copyup/rejected 2>/dev/null; then
+  echo "readonly tmpcopyup accepted a write" >&2
+  exit 1
+fi
+[ ! -e /readonly-copyup/rejected ]
 [ "$(cat /readonly-overlay/lower-file)" = lower-file ]
 if echo rejected > /readonly-overlay/rejected 2>/dev/null; then
   echo "readonly overlay accepted a write" >&2
@@ -233,6 +257,10 @@ __main() {
   fi
   if sudo test -e "${_bundle}/rootfs/copyup/runtime"; then
     echo "tmpcopyup write leaked into the original rootfs directory" >&2
+    exit 1
+  fi
+  if sudo test -e "${_bundle}/rootfs/readonly-copyup/rejected"; then
+    echo "readonly tmpcopyup write leaked into the original rootfs directory" >&2
     exit 1
   fi
 
