@@ -10,7 +10,6 @@ _runtime_test_dir="${_repo_root}/tests"
 _nscell_image="${NSCELL_IMAGE:-ghcr.io/lwmacct/260522-nscell:latest}"
 _test_root="${NSCELL_CI_TEST_ROOT:-/tmp/nscell}"
 _image_cache_dir="${NSCELL_CI_IMAGE_CACHE_DIR:-${_test_root}/images}"
-_gate_mode="${NSCELL_GATE_MODE:-ci}"
 _target_platform="${NSCELL_IMAGE_PLATFORM:-linux/amd64}"
 _release_root="${NSCELL_RELEASE_ROOT:-/opt/nscell/releases}"
 _current_link="${NSCELL_CURRENT_LINK:-/opt/nscell/current}"
@@ -200,14 +199,6 @@ __install_nscell_binary() {
 }
 
 __install_nscell_systemd_units() {
-  case "$_gate_mode" in
-  strict | ci) ;;
-  *)
-    echo "unsupported NSCELL_GATE_MODE: $_gate_mode" >&2
-    exit 2
-    ;;
-  esac
-
   __log "installing nscell-daemon systemd unit"
   sudo tee /etc/systemd/system/nscell-daemon.service >/dev/null <<EOF
 [Unit]
@@ -216,7 +207,7 @@ Before=docker.service containerd.service
 
 [Service]
 Type=notify
-ExecStart=/usr/bin/nscell daemon --log ${_daemon_log} --gate-mode ${_gate_mode} --metrics-listen 127.0.0.1:9618
+ExecStart=/usr/bin/nscell daemon --log ${_daemon_log} --metrics-listen 127.0.0.1:9618
 TimeoutStartSec=45
 TimeoutStopSec=90
 StartLimitInterval=0
@@ -300,22 +291,11 @@ __restart_nscell_services() {
 }
 
 __verify_gate() {
-  local _expected_enforce
-
-  case "$_gate_mode" in
-  strict) _expected_enforce=true ;;
-  ci) _expected_enforce=false ;;
-  *)
-    echo "unsupported NSCELL_GATE_MODE: $_gate_mode" >&2
-    exit 2
-    ;;
-  esac
   sudo systemctl is-active --quiet nscell-daemon.service
   sudo systemctl cat nscell-daemon.service
   sudo nscell daemon gate status
   sudo nscell daemon gate status |
-    jq -e --arg _mode "$_gate_mode" --argjson _enforce "$_expected_enforce" \
-      '(.mode == $_mode) and (.enforce == $_enforce)'
+    jq -e '(.mode == "strict") and (.enabled == true) and (.enforce == true)'
 }
 
 __assert_nscell_ready() {

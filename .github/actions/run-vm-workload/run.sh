@@ -19,12 +19,11 @@ __main() {
     return 2
   fi
 
-  sudo incus exec "${_vm_name}" -- \
-    env \
-    NSCELL_TEST_TARGET="${_test_target}" \
-    NSCELL_IMAGE="${_nscell_image}" \
-    NSCELL_GATE_MODE=strict \
-    NSCELL_REGISTRY_USERNAME="${_registry_username}" \
+sudo incus exec "${_vm_name}" -- \
+  env \
+  NSCELL_TEST_TARGET="${_test_target}" \
+  NSCELL_IMAGE="${_nscell_image}" \
+  NSCELL_REGISTRY_USERNAME="${_registry_username}" \
     NSCELL_REGISTRY_TOKEN="${_registry_token}" \
     bash -s <<'EOF'
 set -euo pipefail
@@ -73,7 +72,6 @@ cd /opt/nscell-ci
 export NSCELL_IMAGE="${_nscell_image}"
 export NSCELL_IMAGE_PLATFORM=linux/amd64
 export NSCELL_CI_TEST_ROOT=/data/nscell
-export NSCELL_GATE_MODE=strict
 bash scripts/ci.sh setup-runtime-host
 bash scripts/ci.sh verify-gate
 

@@ -92,7 +92,7 @@ jobs:
 
             mapfile -t _paths < <(git diff --name-only "${_before_sha}" "${GITHUB_SHA}")
             if printf '%s\n' "${_paths[@]}" | grep -Eq \
-              '^(\.github/actions/|\.github/scripts/|\.github/workflows/(check|test-host|test-release|test-vm)\.yml$|scripts/|tests/)'; then
+              '^(\.github/actions/|\.github/scripts/|\.github/workflows/(check|test-release|test-vm)\.yml$|scripts/|tests/)'; then
               echo "runtime=true" >> "${GITHUB_OUTPUT}"
             else
               echo "runtime=false" >> "${GITHUB_OUTPUT}"
@@ -126,18 +126,6 @@ jobs:
           }
 
           __main "$@"
-
-  host-smoke:
-    name: Host smoke
-    needs:
-      - static
-      - changes
-    if: needs.changes.outputs.runtime == 'true'
-    uses: ./.github/workflows/test-host.yml
-    with:
-      nscell_image: ${{ needs.changes.outputs.nscell_image }}
-      suite: smoke
-    secrets: inherit
 
   vm-smoke:
     name: VM smoke

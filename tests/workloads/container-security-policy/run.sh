@@ -14,20 +14,19 @@ source "${_workload_dir}/library/readiness.sh"
 source "${_workload_dir}/library/images.sh"
 source "${_workload_dir}/library/oci.sh"
 
-_bpf_lsm_active=false
 _identity_bundle="${_volume_root}/container-security-policy/invalid-host-root-map"
 _identity_id="container-security-host-root-map${_workload_resource_id:+-${_workload_resource_id}}"
 _identity_export_name="nscell-oci-export-identity${_workload_resource_id:+-${_workload_resource_id}}"
 
-__detect_bpf_lsm() {
+__require_bpf_lsm() {
   if sudo nscell daemon gate status |
-    jq -e '.enabled == true and .features.lsmActive == true and .auditEnabled == true' >/dev/null; then
-    _bpf_lsm_active=true
-    __log "BPF LSM policy and audit checks enabled"
+    jq -e '.enabled == true and .mode == "strict" and .enforce == true and .features.lsmActive == true and .auditEnabled == true' >/dev/null; then
+    __log "strict BPF LSM policy and audit checks required"
     return
   fi
-  _bpf_lsm_active=false
-  __log "BPF LSM unavailable; validating seccomp policy fallback"
+  echo "strict BPF LSM gate with audit is required for container-security-policy" >&2
+  sudo nscell daemon gate status >&2 || true
+  exit 1
 }
 
 __state_json() {
@@ -175,46 +174,13 @@ __assert_bpf_mount_audit() {
   exit 1
 }
 
-__assert_seccomp_mount_deny() {
-  local _log_start="$1"
-  local _profile="$2"
-  local _fs_type="$3"
-  local _deadline _log
-
-  _deadline=$((SECONDS + 15))
-  while ((SECONDS <= _deadline)); do
-    _log="$(tail -n +"$((_log_start + 1))" "$_daemon_log" 2>/dev/null || true)"
-    if awk \
-      -v _profile="profile=${_profile}" \
-      -v _fs_type="fstype=${_fs_type}" \
-      'index($0, "mount denied") &&
-			 index($0, "reason=unsupported-no-bpf-lsm") &&
-			 index($0, _profile) &&
-			 index($0, _fs_type) { found = 1 }
-			 END { exit !found }' <<<"$_log"; then
-      return 0
-    fi
-    sleep 0.5
-  done
-
-  echo "missing seccomp fallback mount deny for profile=${_profile} fstype=${_fs_type}" >&2
-  tail -n +"$((_log_start + 1))" "$_daemon_log" 2>/dev/null |
-    grep -E 'slow seccomp notification|mount denied' |
-    tail -160 >&2 || true
-  exit 1
-}
-
 __assert_unsafe_mount_audits() {
   local _log_start="$1"
   local _profile="$2"
   local _fs_type
 
   for _fs_type in securityfs debugfs tracefs configfs; do
-    if [[ "$_bpf_lsm_active" == "true" ]]; then
-      __assert_bpf_mount_audit "$_log_start" "$_profile" "$_fs_type"
-    else
-      __assert_seccomp_mount_deny "$_log_start" "$_profile" "$_fs_type"
-    fi
+    __assert_bpf_mount_audit "$_log_start" "$_profile" "$_fs_type"
   done
 }
 
@@ -254,10 +220,6 @@ __assert_kernel_interface_audits() {
   local _profile="$2"
   local _probe_output="$3"
   local _file_name
-
-  if [[ "$_bpf_lsm_active" != "true" ]]; then
-    return
-  fi
 
   for _file_name in lsm securityfs debugfs tracefs configfs; do
     if ! grep -q "kernel-interface-denied ${_file_name}" <<<"$_probe_output"; then
@@ -704,17 +666,15 @@ __run_profile() {
   _probe_output="$(__run_probe "$_name" cgroup-subtree-kernel-interface-file-policy)"
   printf '%s\n' "$_probe_output"
   __assert_kernel_interface_audits "$_log_start" "$_profile" "$_probe_output"
-  if [[ "$_bpf_lsm_active" == "true" ]]; then
-    __log "checking xattr negative policy in ${_name}"
+  __log "checking xattr negative policy in ${_name}"
+  _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
+  __run_probe "$_name" xattr-negative-policy
+  __assert_xattr_negative_audits "$_log_start" "$_profile"
+  if [[ "$_profile" == "dind" ]]; then
+    __log "checking trusted overlay xattr policy in ${_name}"
     _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
-    __run_probe "$_name" xattr-negative-policy
-    __assert_xattr_negative_audits "$_log_start" "$_profile"
-    if [[ "$_profile" == "dind" ]]; then
-      __log "checking trusted overlay xattr policy in ${_name}"
-      _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
-      __run_probe "$_name" xattr-trusted-overlay-policy
-      __assert_xattr_trusted_overlay_audits "$_log_start" "$_profile"
-    fi
+    __run_probe "$_name" xattr-trusted-overlay-policy
+    __assert_xattr_trusted_overlay_audits "$_log_start" "$_profile"
   fi
   __check_proc_sys "$_name" "$_profile"
 }
@@ -741,20 +701,16 @@ __main() {
   __init_ci_dirs
   __build_ci_image "$_container_security_policy_image" "$_workload_path" --build-arg "BASE_IMAGE=${_container_security_policy_base_image}"
 
-  __detect_bpf_lsm
+  __require_bpf_lsm
   __check_host_root_mapping_rejected
-  if [[ "$_bpf_lsm_active" == "true" ]]; then
-    __check_host_bpf_gate_exemption
-    __check_host_kernel_interface_gate_exemption
-    __check_host_task_gate_exemption
-  fi
+  __check_host_bpf_gate_exemption
+  __check_host_kernel_interface_gate_exemption
+  __check_host_task_gate_exemption
   __run_profile k8s-node
   __run_profile default
   __run_profile dind
-  if [[ "$_bpf_lsm_active" == "true" ]]; then
-    __check_host_target_task_gate
-    __check_cross_container_task_gate
-  fi
+  __check_host_target_task_gate
+  __check_cross_container_task_gate
 
   __assert_nscell_ready
   echo "container-security-policy-validation-ok"

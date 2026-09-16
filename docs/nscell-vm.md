@@ -39,9 +39,9 @@ The artifact contains `incus.tar.xz`, `disk.qcow2`, and `SHA256SUMS`.
   target gets its own runner and VM, so workloads run concurrently rather than
   sharing a guest. The `smoke`, `gate`, and `full` suites are defined in
   `tests/manifest.json`; an explicit `targets` value overrides the suite.
-- VM `gate` contains only tests whose environment coverage justifies an
-  isolated guest. Host `gate` covers the remaining release checks without
-  paying the nested VM startup cost.
+- VM `gate` is the complete release check suite. Every workload runs in an
+  isolated guest with the BPF LSM gate enforced in strict mode; the reduced
+  security host execution mode has been removed.
 - The special `smoke` target checks BPF LSM, nscell daemon readiness, Docker
   runtime registration, and one `busybox` container.
 - Release validation also runs `kernel-capability-smoke` on the Debian 6.18

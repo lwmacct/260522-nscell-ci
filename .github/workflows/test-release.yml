@@ -13,15 +13,6 @@ on:
         required: true
         default: ghcr.io/lwmacct/260522-nscell-ci:artifact-images-standard
         type: string
-      host_suite:
-        description: Host manifest suite
-        required: true
-        default: gate
-        type: choice
-        options:
-          - smoke
-          - gate
-          - full
       vm_suite:
         description: VM manifest suite
         required: true
@@ -37,18 +28,10 @@ permissions:
   packages: read
 
 concurrency:
-  group: test-release-${{ github.ref }}-${{ inputs.nscell_image }}-${{ inputs.host_suite }}-${{ inputs.vm_suite }}
+  group: test-release-${{ github.ref }}-${{ inputs.nscell_image }}-${{ inputs.vm_suite }}
   cancel-in-progress: true
 
 jobs:
-  host:
-    name: Host ${{ inputs.host_suite }}
-    uses: ./.github/workflows/test-host.yml
-    with:
-      nscell_image: ${{ inputs.nscell_image }}
-      suite: ${{ inputs.host_suite }}
-    secrets: inherit
-
   vm:
     name: VM ${{ inputs.vm_suite }}
     uses: ./.github/workflows/test-vm.yml

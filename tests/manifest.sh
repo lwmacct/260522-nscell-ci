@@ -12,7 +12,7 @@ usage: tests/manifest.sh <command>
 commands:
   validate
   workloads
-  select <host|vm> <smoke|gate|full> [explicit targets]
+  select <vm> <smoke|gate|full> [explicit targets]
 EOF
 }
 
@@ -24,13 +24,10 @@ __validate_schema() {
 		all(.targets[];
 			(.name | type == "string" and test("^[a-z0-9][a-z0-9-]*$")) and
 			(.kind == "workload" or .kind == "probe") and
-			(.modes | type == "object" and length > 0) and
-			all(.modes | to_entries[];
-				(.key == "host" or .key == "vm") and
-				(.value.suites | type == "array" and length > 0) and
-				all(.value.suites[]; . == "smoke" or . == "gate" or . == "full") and
-				(.value.timeout_minutes | type == "number" and . > 0 and . <= 10 and floor == .)
-			)
+			(.modes | type == "object" and (keys_unsorted == ["vm"])) and
+			(.modes.vm.suites | type == "array" and length > 0) and
+			all(.modes.vm.suites[]; . == "smoke" or . == "gate" or . == "full") and
+			(.modes.vm.timeout_minutes | type == "number" and . > 0 and . <= 10 and floor == .)
 		)
 	' "${_manifest}" >/dev/null
 }
@@ -87,7 +84,7 @@ __select() {
 	local _target _targets_json _selection
 
 	case "${_mode}" in
-	host | vm) ;;
+	vm) ;;
 	*)
 		echo "unsupported test mode: ${_mode}" >&2
 		return 2

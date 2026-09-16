@@ -42,21 +42,35 @@ PY
 }
 
 __check_manifest() {
-	local _mode _suite _selection
+	local _suite _selection
 
 	bash tests/manifest.sh validate
-	for _mode in host vm; do
-		for _suite in smoke gate full; do
-			_selection="$(bash tests/manifest.sh select "${_mode}" "${_suite}")"
-			jq -e '
-				type == "array" and length > 0 and
-				all(.[];
-					(.name | type == "string" and length > 0) and
-					(.timeout_minutes | type == "number" and . > 0 and . <= 10)
-				)
-			' <<<"${_selection}" >/dev/null
-		done
+	for _suite in smoke gate full; do
+		_selection="$(bash tests/manifest.sh select vm "${_suite}")"
+		jq -e '
+			type == "array" and length > 0 and
+			all(.[];
+				(.name | type == "string" and length > 0) and
+				(.timeout_minutes | type == "number" and . > 0 and . <= 10)
+			)
+		' <<<"${_selection}" >/dev/null
 	done
+}
+
+__check_retired_gate_mode() {
+	local _matches
+
+	# ADR-026 removed reduced-security gate execution. These references must
+	# not return to workflows, scripts, tests, or documentation.
+	_matches="$(
+		git grep -n -I -E 'NSCELL_GATE_MODE|--gate-mode|unsupported-no-bpf-lsm' -- \
+		':(exclude).github/scripts/check.sh' || true
+	)"
+	if [[ -n "${_matches}" ]]; then
+		echo "retired reduced-security gate reference found:" >&2
+		printf '%s\n' "${_matches}" >&2
+		return 1
+	fi
 }
 
 __main() {
@@ -69,6 +83,7 @@ __main() {
 	__check_shell
 	__check_python
 	__check_manifest
+	__check_retired_gate_mode
 	actionlint
 	git show --check --oneline HEAD >/dev/null
 	git diff --check

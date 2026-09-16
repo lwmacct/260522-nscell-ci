@@ -1,7 +1,7 @@
-# Container Runtime CI Probe
+# NSCell Runtime CI
 
-This public repository probes whether GitHub-hosted runners can execute
-host-level container runtime tests.
+This public repository runs NSCell runtime workload validation in disposable
+virtual machines with the BPF LSM gate enforced in strict mode.
 
 The workflow intentionally does not mirror any product repository CI. It checks
 only the resources needed by runtime validation:
@@ -12,17 +12,14 @@ only the resources needed by runtime validation:
 - BTF, bpffs, and active BPF LSM
 - ID-mapped bind mounts and overlayfs on top of the mapped mount
 
-When manually dispatching `Test host`, enable `debug_tmate` to open an SSH
-session on the GitHub-hosted runner selected by `debug_target`.
-
-`Test host` validates binaries extracted from an exact public GHCR image, for
-example `ghcr.io/lwmacct/260522-nscell@sha256:...`. The runtime setup, gate
-check, diagnostics, and workload flow live in this repository under
+Every workflow validates binaries extracted from an exact public GHCR image,
+for example `ghcr.io/lwmacct/260522-nscell@sha256:...`. The runtime setup,
+gate check, diagnostics, and workload flow live in this repository under
 `scripts/ci.sh` and `tests/`.
 
 All runtime workloads are stored in `tests/workloads/`. `tests/manifest.json`
-is the single catalog for host and VM availability, the `smoke`, `gate`, and
-`full` suites, and target timeouts. Each selected target gets its own runner,
+is the single catalog for VM availability, the `smoke`, `gate`, and `full`
+suites, and target timeouts. Each selected target gets its own runner, VM,
 services, logs, and artifact. A manual run can use `targets` to override its
 selected suite and isolate one or more workloads.
 
@@ -38,16 +35,16 @@ remain under `tests/workloads/systemd-pid1/` and are injected at test time, so
 the published image contains no workload assertions.
 
 `Test release` is the product-facing `workflow_dispatch` entry point. It calls
-the reusable host and VM workflows in parallel, so every release gate uses one
-CI commit and has one final conclusion. `Test host` and `Test workloads in VM`
-remain manually dispatchable for focused runs and debugging. Runs, billing,
-matrix jobs, logs, and artifacts remain in this public repository. The test
-runner fetches the selected linux/amd64 image manifest and layers, extracts
-`/usr/local/bin/nscell`, then installs the binary and the
+the reusable VM workflow, so every release gate uses one CI commit and has one
+final conclusion. `Test workloads in VM` remains manually dispatchable for
+focused runs and debugging. Runs, billing, matrix jobs, logs, and artifacts
+remain in this public repository. The test runner fetches the selected
+linux/amd64 image manifest and layers, extracts `/usr/local/bin/nscell`, then
+installs the binary and the
 `nscell-daemon.service` systemd unit.
 
 `Check main` validates every direct push to `main`. It always runs repository
-static checks and adds host and VM smoke coverage when runtime test files or
+static checks and adds VM smoke coverage when runtime test files or
 Actions change. This repository does not use a pull-request workflow.
 
 The dedicated Ubuntu VM image and its nested Incus validation workflows are
