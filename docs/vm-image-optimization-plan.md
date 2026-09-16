@@ -42,29 +42,41 @@ Validation:
 
 ## Phase 2: experimental Python image preset
 
-Status: **in progress**
+Status: **complete and promoted to `standard`**
 
-`standard-pycache` is a separate experimental profile rather than an immediate
-enlargement of `standard`. Its build boots a candidate VM, pulls the pinned
-Python digest into Docker, cleans first-boot state, and republishes the
-already-unpacked disk. This intentionally avoids storing only an OCI archive
-that would still need extraction on every boot.
+The experiment used a temporary `standard-pycache` profile. Its build booted a
+candidate VM, pulled the pinned Python digest into Docker, cleaned first-boot
+state, and republished the already-unpacked disk. This intentionally avoided
+storing only an OCI archive that would still need extraction on every boot.
+After the measurements below, the behavior was promoted into `standard` and the
+temporary profile was removed.
 
-Measure against the phase-one baseline:
+Validation:
 
-- GHCR `disk.qcow2` artifact size.
-- `Pull and verify VM image` duration.
-- Duration of all five Python-based workload jobs.
-- `gate` wall time and total runner minutes.
-- Registry and network failure count.
+- The warmed-image build and qcow2 validation succeeded:
+  [dry run 35141389343](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35141389343).
+- The warmed profile passed all five Python-based targets:
+  [test run 35143078526](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35143078526).
+- The same qcow2 then passed the complete 21-target VM gate:
+  [gate run 35143574513](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35143574513).
 
-Rollout criteria:
+Measurements:
 
-- The smoke BusyBox pull remains live, preserving image-pull coverage.
-- Python workload image preparation drops by roughly 40-50 seconds per affected
-  job after accounting for any larger VM artifact download.
-- The experimental profile is promoted only if total gate cost and reliability
-  improve; otherwise it is retired.
+- The phase-one standard disk was 631,234,048 bytes; the warmed disk was
+  676,921,344 bytes, an increase of 45,687,296 bytes (7.2%).
+- The warmed disk is still about 69.1MB smaller than the original 746MB
+  production baseline because the compiler toolchain was removed.
+- Across the five affected targets, Python image preparation fell from about
+  234.8 seconds to 29.0 seconds, saving about 205.8 seconds of runner time.
+- Python image build steps fell to roughly 2-4 seconds; `fuse-copy-file-range`
+  still spends about 15 seconds exporting its Python rootfs into an OCI bundle.
+- Compared with the prior 21-job standard gate, total job time fell from about
+  3,511 seconds to 3,155 seconds (10.1%). The wall-clock critical path remained
+  Docker-in-Docker, so gate wall time is bounded by that workload rather than
+  Python image preparation.
+
+The smoke BusyBox pull remains live, preserving real image-pull and extraction
+coverage.
 
 ## Phase 3: slow-path workload review
 

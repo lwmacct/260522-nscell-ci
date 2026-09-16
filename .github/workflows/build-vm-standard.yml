@@ -268,10 +268,6 @@ jobs:
                 _release="resolute"
                 _description="Test VM ${IMAGE_NAME}: Ubuntu 26.04 AMD64"
                 ;;
-              standard-pycache)
-                _release="resolute"
-                _description="Test VM ${IMAGE_NAME}: Ubuntu 26.04 AMD64"
-                ;;
               linux-6-18)
                 _release="trixie"
                 _description="Test VM ${IMAGE_NAME}: Debian 13 / Linux 6.18.52 AMD64"
@@ -300,12 +296,12 @@ jobs:
           __main "$@"
 
       - name: Setup Incus for Python image cache
-        if: matrix.image == 'standard-pycache'
+        if: matrix.image == 'standard'
         id: incus
         uses: ./.github/actions/setup-incus
 
       - name: Warm Python image cache
-        if: matrix.image == 'standard-pycache'
+        if: matrix.image == 'standard'
         env:
           VM_CPU: ${{ steps.incus.outputs.vm_cpu_count }}
           VM_MEMORY: ${{ steps.incus.outputs.vm_memory_limit }}
@@ -435,9 +431,6 @@ jobs:
             set -euo pipefail
             case "${IMAGE_NAME}" in
               standard)
-                _description="Test VM ${IMAGE_NAME}: Ubuntu 26.04 AMD64"
-                ;;
-              standard-pycache)
                 _description="Test VM ${IMAGE_NAME}: Ubuntu 26.04 AMD64"
                 ;;
               linux-6-18)

@@ -7,15 +7,11 @@ Incus from the signed Zabbly source at `pkgs.zabbly.com`.
 Two production profiles are maintained:
 
 - `images/standard.yaml` is Ubuntu 26.04 with `linux-image-virtual-hwe-26.04`.
-  It provides broad current-kernel workload coverage.
+  It provides broad current-kernel workload coverage and contains the unpacked
+  Docker image store for the pinned Python Alpine base used by repeated runtime
+  workloads.
 - `images/linux-6-18.yaml` is Debian 13 with the stable 6.18 kernel. It is the
   exact floor gate and is used for `kernel-capability-smoke`.
-
-`images/standard-pycache.yaml` is an experimental copy of the standard profile.
-Its build workflow boots the candidate once, pulls the pinned Python base image
-into Docker, and republishes the warmed qcow2 disk as a split Incus VM image.
-It is not used by release validation until its size and runtime measurements
-satisfy the optimization plan.
 
 Both contain the Incus VM agent, the Docker runtime stack, FUSE and idmap
 utilities, diagnostics, and a guest GRUB command line that enables the BPF LSM.
@@ -25,7 +21,7 @@ disposable VM through a read-only Incus disk share.
 
 The profiles intentionally omit a guest compiler toolchain. Runtime workloads
 must not depend on building probes inside the guest; the staged plan for a
-possible Python image preset is tracked in
+the measured Python image preset is tracked in
 [`vm-image-optimization-plan.md`](vm-image-optimization-plan.md).
 
 The image workflow publishes a commit-addressed candidate such as:

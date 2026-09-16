@@ -409,6 +409,7 @@ files:
   mode: 0644
   content: |-
     IMAGE_PROFILE=standard
+    PRESET_PYTHON_312_ALPINE=sha256:b64631e04e4920160c50fbe8d8df828f7f35f06f425cb44aa09bca53e708a35a
     IMAGE_CONTRACT=1
   types:
   - vm
