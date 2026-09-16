@@ -29,7 +29,7 @@ __validate_schema() {
 				(.key == "host" or .key == "vm") and
 				(.value.suites | type == "array" and length > 0) and
 				all(.value.suites[]; . == "smoke" or . == "gate" or . == "full") and
-				(.value.timeout_minutes | type == "number" and . > 0 and floor == .)
+				(.value.timeout_minutes | type == "number" and . > 0 and . <= 10 and floor == .)
 			)
 		)
 	' "${_manifest}" >/dev/null

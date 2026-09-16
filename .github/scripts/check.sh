@@ -52,7 +52,7 @@ __check_manifest() {
 				type == "array" and length > 0 and
 				all(.[];
 					(.name | type == "string" and length > 0) and
-					(.timeout_minutes | type == "number" and . > 0)
+					(.timeout_minutes | type == "number" and . > 0 and . <= 10)
 				)
 			' <<<"${_selection}" >/dev/null
 		done
