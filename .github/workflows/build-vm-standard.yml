@@ -332,7 +332,7 @@ jobs:
           }
 
           __main() {
-            local _artifact_dir _export_dir _disk _disk_size
+            local _artifact_dir _base_disk_size _disk _disk_size _export_dir
 
             set -euo pipefail
             _artifact_dir="${RUNNER_TEMP}/${OUTPUT_DIR_NAME}"
@@ -377,6 +377,7 @@ jobs:
 
             _disk="$(find "${_export_dir}" -maxdepth 1 -type f -name '*.qcow2' -print -quit)"
             [[ -n "${_disk}" ]]
+            _base_disk_size="$(stat -c '%s' "${_artifact_dir}/disk.qcow2")"
             mv "${_artifact_dir}/disk.qcow2" "${_artifact_dir}/disk.qcow2.distrobuilder"
             mv "${_disk}" "${_artifact_dir}/disk.qcow2"
             _disk_size="$(stat -c '%s' "${_artifact_dir}/disk.qcow2")"
@@ -384,6 +385,7 @@ jobs:
               echo "## Warmed Python image cache"
               echo
               echo "- Image: \`${PYTHON_IMAGE}\`"
+              echo "- Base disk size: \`${_base_disk_size}\` bytes"
               echo "- Warmed disk size: \`${_disk_size}\` bytes"
             } >> "${GITHUB_STEP_SUMMARY}"
           }
@@ -401,7 +403,7 @@ jobs:
               "${RUNNER_TEMP}/${OUTPUT_DIR_NAME}/disk.qcow2"
             qemu-img info --output=json \
               "${RUNNER_TEMP}/${OUTPUT_DIR_NAME}/disk.qcow2" |
-              jq '{filename,format,virtual_size,actual_size}'
+              jq '{filename,format,virtual_size:.["virtual-size"],actual_size:.["actual-size"]}'
             qemu-img check "${RUNNER_TEMP}/${OUTPUT_DIR_NAME}/disk.qcow2"
           }
 
