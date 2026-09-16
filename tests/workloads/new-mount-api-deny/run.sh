@@ -21,7 +21,7 @@ __deny_output_has_case() {
   local _output="$1"
   local _syscall_name
 
-  for _syscall_name in open_tree fspick move_mount mount_setattr statmount listmount; do
+  for _syscall_name in open_tree fspick fsopen fsconfig fsmount move_mount mount_setattr statmount listmount; do
     if [[ "$_output" != *"new-mount-api-deny-ok:${_syscall_name}"* ]]; then
       echo "missing explicit deny result for ${_syscall_name}" >&2
       return 1
@@ -62,6 +62,9 @@ import struct
 numbers = {
     "x86_64": {
         "open_tree": 428,
+        "fsopen": 430,
+        "fsconfig": 431,
+        "fsmount": 432,
         "fspick": 433,
         "move_mount": 429,
         "mount_setattr": 442,
@@ -70,6 +73,9 @@ numbers = {
     },
     "aarch64": {
         "open_tree": 428,
+        "fsopen": 430,
+        "fsconfig": 431,
+        "fsmount": 432,
         "fspick": 433,
         "move_mount": 429,
         "mount_setattr": 442,
@@ -146,7 +152,7 @@ PY
   __deny_output_has_case "$_output" || return 1
 
   local _syscall_name
-  for _syscall_name in open_tree fspick move_mount mount_setattr statmount listmount; do
+  for _syscall_name in open_tree fspick fsopen fsconfig fsmount move_mount mount_setattr statmount listmount; do
     if ! __daemon_has_decision "$_syscall_name" deny "$_profile"; then
       echo "daemon did not record structured ${_profile} deny for ${_syscall_name}" >&2
       sudo tail -100 "$_daemon_log" >&2
@@ -159,8 +165,9 @@ __run_authorized_case() {
   local _profile="$1"
   local _source_path="$2"
   local _target_path="$3"
+  local _fs_target_path="$4"
   local _case_output
-  local _expected_output="new-mount-api-${_profile}-ok:proxy-attributes-attach"
+  local _expected_output="new-mount-api-${_profile}-ok:proxy-attributes-attach"$'\n'"new-mount-api-${_profile}-ok:fs-context-attach"
   local _syscall_name
 
   __cleanup
@@ -173,6 +180,7 @@ __run_authorized_case() {
     --env "CASE_PROFILE=${_profile}" \
     --env "CASE_SOURCE=${_source_path}" \
     --env "CASE_TARGET=${_target_path}" \
+    --env "CASE_FS_TARGET=${_fs_target_path}" \
     "$_container_security_policy_base_image" \
     python3 - <<'PY'
 import ctypes
@@ -184,8 +192,26 @@ import struct
 import sys
 
 numbers = {
-    "x86_64": {"open_tree": 428, "move_mount": 429, "mount_setattr": 442, "statmount": 457, "listmount": 458},
-    "aarch64": {"open_tree": 428, "move_mount": 429, "mount_setattr": 442, "statmount": 457, "listmount": 458},
+    "x86_64": {
+        "open_tree": 428,
+        "move_mount": 429,
+        "fsopen": 430,
+        "fsconfig": 431,
+        "fsmount": 432,
+        "mount_setattr": 442,
+        "statmount": 457,
+        "listmount": 458,
+    },
+    "aarch64": {
+        "open_tree": 428,
+        "move_mount": 429,
+        "fsopen": 430,
+        "fsconfig": 431,
+        "fsmount": 432,
+        "mount_setattr": 442,
+        "statmount": 457,
+        "listmount": 458,
+    },
 }
 syscalls = numbers.get(platform.machine())
 if syscalls is None:
@@ -194,8 +220,10 @@ if syscalls is None:
 profile = os.environ["CASE_PROFILE"]
 path = os.environ["CASE_SOURCE"]
 target = os.environ["CASE_TARGET"]
+fs_target = os.environ["CASE_FS_TARGET"]
 os.makedirs(path, exist_ok=True)
 os.makedirs(target, exist_ok=True)
+os.makedirs(fs_target, exist_ok=True)
 libc = ctypes.CDLL(None, use_errno=True)
 mount_setattr = syscalls["mount_setattr"]
 
@@ -428,6 +456,85 @@ if target not in open("/proc/self/mountinfo", encoding="utf-8").read():
     raise SystemExit(1)
 os.close(result)
 print(f"new-mount-api-{profile}-ok:proxy-attributes-attach")
+
+
+def raw_syscall(name, *args):
+    ctypes.set_errno(0)
+    value = libc.syscall(ctypes.c_long(syscalls[name]), *args)
+    return value, ctypes.get_errno()
+
+
+def expect_deny(name, *args):
+    result, errno = raw_syscall(name, *args)
+    if result != -1 or errno != 1:
+        raise SystemExit(f"{name}: result={result} errno={errno}, want EPERM")
+
+
+expect_deny("fsopen", ctypes.c_char_p(b"overlay"), ctypes.c_uint(0))
+expect_deny("fsopen", ctypes.c_char_p(b"tmpfs"), ctypes.c_uint(2))
+
+unsafe_fd, errno = raw_syscall("fsopen", ctypes.c_char_p(b"tmpfs"), ctypes.c_uint(1))
+if unsafe_fd == -1:
+    raise SystemExit(f"pre-create fsopen failed: errno={errno}")
+if not stat.S_ISSOCK(os.fstat(unsafe_fd).st_mode):
+    raise SystemExit("fsopen exposed a non-proxy descriptor")
+expect_deny("fsconfig", ctypes.c_int(unsafe_fd), ctypes.c_uint(1), ctypes.c_char_p(b"size"), ctypes.c_char_p(b"1m"), ctypes.c_int(0))
+expect_deny("fsconfig", ctypes.c_int(unsafe_fd), ctypes.c_uint(3), ctypes.c_char_p(b"source"), ctypes.c_char_p(b"/etc"), ctypes.c_int(-100))
+expect_deny("fsconfig", ctypes.c_int(unsafe_fd), ctypes.c_uint(2), ctypes.c_char_p(b"mode"), ctypes.c_char_p(b"\x01\x02"), ctypes.c_int(2))
+expect_deny("fsconfig", ctypes.c_int(unsafe_fd), ctypes.c_uint(5), ctypes.c_char_p(b"fd"), None, ctypes.c_int(0))
+expect_deny("fsmount", ctypes.c_int(unsafe_fd), ctypes.c_uint(1), ctypes.c_uint(0x100000))
+expect_deny("fsmount", ctypes.c_int(unsafe_fd), ctypes.c_uint(1), ctypes.c_uint(0x10))
+expect_deny("mount_setattr", ctypes.c_int(unsafe_fd), None, ctypes.c_uint(0x1000), struct.pack("=QQQQ", 1, 0, 0, 0), ctypes.c_size_t(32))
+expect_deny("move_mount", ctypes.c_int(unsafe_fd), None, ctypes.c_int(-100), ctypes.c_char_p(fs_target.encode()), ctypes.c_uint(4))
+expect_deny("fspick", ctypes.c_int(-100), ctypes.c_char_p(target.encode()), ctypes.c_uint(1))
+os.close(unsafe_fd)
+
+fsfd, errno = raw_syscall("fsopen", ctypes.c_char_p(b"tmpfs"), ctypes.c_uint(1))
+if fsfd == -1:
+    raise SystemExit(f"authorized fsopen failed: errno={errno}")
+if not stat.S_ISSOCK(os.fstat(fsfd).st_mode):
+    raise SystemExit("authorized fsopen exposed a non-proxy descriptor")
+
+expect_deny("fsmount", ctypes.c_int(fsfd), ctypes.c_uint(1), ctypes.c_uint(0xE))
+created, errno = raw_syscall(
+    "fsconfig",
+    ctypes.c_int(fsfd),
+    ctypes.c_uint(6),
+    None,
+    None,
+    ctypes.c_int(0),
+)
+if created != 0:
+    raise SystemExit(f"authorized fsconfig failed: result={created} errno={errno}")
+
+mntfd, errno = raw_syscall(
+    "fsmount",
+    ctypes.c_int(fsfd),
+    ctypes.c_uint(1),
+    ctypes.c_uint(0xE),
+)
+if mntfd == -1:
+    raise SystemExit(f"authorized fsmount failed: errno={errno}")
+if not stat.S_ISSOCK(os.fstat(mntfd).st_mode):
+    raise SystemExit("authorized fsmount exposed a non-proxy descriptor")
+
+expect_deny("fsconfig", ctypes.c_int(fsfd), ctypes.c_uint(6), None, None, ctypes.c_int(0))
+expect_deny("fsmount", ctypes.c_int(fsfd), ctypes.c_uint(1), ctypes.c_uint(0xE))
+moved, errno = raw_syscall(
+    "move_mount",
+    ctypes.c_int(mntfd),
+    None,
+    ctypes.c_int(-100),
+    ctypes.c_char_p(fs_target.encode()),
+    ctypes.c_uint(4),
+)
+if moved != 0:
+    raise SystemExit(f"authorized synthetic move_mount failed: result={moved} errno={errno}")
+if fs_target not in open("/proc/self/mountinfo", encoding="utf-8").read():
+    raise SystemExit("authorized synthetic move_mount did not attach the mount")
+os.close(fsfd)
+os.close(mntfd)
+print(f"new-mount-api-{profile}-ok:fs-context-attach")
 PY
   )"
   printf 'new-mount-api-authorized-output[%s]=%q\n' "$_profile" "$_case_output"
@@ -436,14 +543,14 @@ PY
     return 1
   fi
 
-  for _syscall_name in open_tree mount_setattr move_mount listmount statmount; do
+  for _syscall_name in open_tree fsopen fsconfig fsmount mount_setattr move_mount listmount statmount; do
     if ! __daemon_has_decision "$_syscall_name" allow "$_profile"; then
       echo "daemon did not record structured ${_profile} allow for ${_syscall_name}" >&2
       sudo tail -100 "$_daemon_log" >&2
       return 1
     fi
   done
-  for _syscall_name in open_tree mount_setattr listmount statmount; do
+  for _syscall_name in open_tree fsopen fsconfig fsmount mount_setattr listmount statmount; do
     if ! __daemon_has_decision "$_syscall_name" deny "$_profile"; then
       echo "daemon did not record structured ${_profile} deny for ${_syscall_name}" >&2
       sudo tail -100 "$_daemon_log" >&2
@@ -456,6 +563,15 @@ PY
     grep -F "profile=${_profile}" |
     grep -F 'flags=0x88001' >/dev/null; then
     echo "daemon did not record recursive ${_profile} open_tree acquisition" >&2
+    sudo tail -100 "$_daemon_log" >&2
+    return 1
+  fi
+  if ! sudo grep -F 'New mount API decision' "$_daemon_log" |
+    grep -F 'syscall=fsmount' |
+    grep -F 'decision=deny' |
+    grep -F "profile=${_profile}" |
+    grep -F 'attrFlags=0x100000' >/dev/null; then
+    echo "daemon did not record idmap fsmount denial for ${_profile}" >&2
     sudo tail -100 "$_daemon_log" >&2
     return 1
   fi
@@ -481,15 +597,18 @@ __main() {
   __run_authorized_case \
     dind \
     /var/lib/docker/overlay2/nscell-ci/merged \
-    /var/lib/docker/overlay2/nscell-ci/attached
+    /var/lib/docker/overlay2/nscell-ci/attached \
+    /var/lib/docker/overlay2/nscell-ci/fscontext
   __run_authorized_case \
     k8s-node \
     /var/lib/kubelet/pods/nscell-ci/merged \
-    /var/lib/kubelet/pods/nscell-ci/attached
+    /var/lib/kubelet/pods/nscell-ci/attached \
+    /var/lib/kubelet/pods/nscell-ci/fscontext
   __run_authorized_case \
     buildkit \
     /var/lib/buildkit/nscell-ci/merged \
-    /var/lib/buildkit/nscell-ci/attached
+    /var/lib/buildkit/nscell-ci/attached \
+    /var/lib/buildkit/nscell-ci/fscontext
 
   __assert_nscell_ready
   trap - EXIT
