@@ -14,6 +14,11 @@ on:
         required: true
         default: standard
         type: string
+      publish:
+        description: Publish built images to GHCR
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -313,6 +318,7 @@ jobs:
           __main "$@"
 
       - name: Publish candidate to GHCR
+        if: ${{ inputs.publish || github.event_name == 'push' }}
         env:
           ORAS_ARTIFACT_TYPE_VM: application/vnd.linuxcontainers.incus.virtual-machine-image.v1
           ORAS_METADATA_TYPE: application/vnd.linuxcontainers.incus.metadata.v1+tar+xz
