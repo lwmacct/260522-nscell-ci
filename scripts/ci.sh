@@ -82,6 +82,7 @@ __setup_runtime_host() {
 
   __init_ci_dirs
   __install_nscell_binary
+  __install_runtime_wrapper
   __install_nscell_systemd_units
   __configure_apparmor_fuse
   __configure_docker_runtime
@@ -198,6 +199,56 @@ __install_nscell_binary() {
   sudo ln -sfn "${_current_link}/bin/nscell" /usr/bin/nscell
 }
 
+__install_runtime_wrapper() {
+  sudo tee /usr/local/bin/nscell-ci-runtime-wrapper >/dev/null <<'EOF'
+#!/usr/bin/env bash
+
+set -uo pipefail
+
+_invocation_log="/var/log/nscell-runtime-invocations.log"
+_runtime_log="/var/log/nscell-runtime.log"
+_command_log=""
+_previous=""
+
+for _argument in "$@"; do
+  if [[ "${_previous}" == "--log" ]]; then
+    _command_log="${_argument}"
+    break
+  fi
+  case "${_argument}" in
+    --log=*)
+      _command_log="${_argument#--log=}"
+      break
+      ;;
+  esac
+  _previous="${_argument}"
+done
+
+{
+  printf '%s' "$(date -Is)"
+  printf ' %q' /usr/bin/nscell "$@"
+  printf '\n'
+} >>"${_invocation_log}"
+
+/usr/bin/nscell "$@"
+_status=$?
+
+{
+  printf '\n=== %s status=%s' "$(date -Is)" "${_status}"
+  printf ' command=%q' /usr/bin/nscell "$@"
+  printf ' ===\n'
+  if [[ -n "${_command_log}" && -f "${_command_log}" ]]; then
+    cat "${_command_log}"
+  else
+    printf 'runtime log unavailable: %q\n' "${_command_log}"
+  fi
+} >>"${_runtime_log}"
+
+exit "${_status}"
+EOF
+  sudo chmod 0755 /usr/local/bin/nscell-ci-runtime-wrapper
+}
+
 __install_nscell_systemd_units() {
   __log "installing nscell-daemon systemd unit"
   sudo tee /etc/systemd/system/nscell-daemon.service >/dev/null <<EOF
@@ -237,7 +288,7 @@ __configure_docker_runtime() {
 			else
 				.runtimes = ((.runtimes // {})
 					| .["nscell"] = {
-						"path": "/usr/bin/nscell",
+						"path": "/usr/local/bin/nscell-ci-runtime-wrapper",
 						"runtimeArgs": []
 					})
 			end
@@ -246,7 +297,7 @@ __configure_docker_runtime() {
     jq -n '{
 			"runtimes": {
 				"nscell": {
-					"path": "/usr/bin/nscell",
+					"path": "/usr/local/bin/nscell-ci-runtime-wrapper",
 					"runtimeArgs": []
 				}
 			}
@@ -262,6 +313,8 @@ __restart_nscell_services() {
     awk '/^nscell-(docker-in-docker|kubernetes-k3s|systemd-pid1|procfs-memory|procfs-cpu|seccomp-notify-concurrency|container-security-policy)/ { print }' |
     xargs -r docker rm -f >/dev/null 2>&1 || true
   sudo truncate -s 0 "$_daemon_log" 2>/dev/null || sudo install -m 0600 /dev/null "$_daemon_log"
+  sudo truncate -s 0 /var/log/nscell-runtime-invocations.log 2>/dev/null || true
+  sudo truncate -s 0 /var/log/nscell-runtime.log 2>/dev/null || true
   sudo systemctl reset-failed docker.service nscell-daemon.service || true
   sudo systemctl stop nscell-daemon.service || true
   while read -r _mp; do

@@ -37,11 +37,17 @@ __collect_guest_logs() {
       systemctl --no-pager --full status incus-agent.service || true
       journalctl --no-pager -u incus-agent.service || true
       journalctl --no-pager -u docker.service -u nscell-daemon.service || true
+      test -f /var/log/nscell-runtime-invocations.log && cat /var/log/nscell-runtime-invocations.log || true
+      test -f /var/log/nscell-runtime.log && cat /var/log/nscell-runtime.log || true
     } 2>&1
     test -f /var/log/nscell-daemon.log && cat /var/log/nscell-daemon.log || true
   ' >"${_log_dir}/guest-diagnostics.log" 2>&1 || true
   sudo incus file pull "${_vm_name}/var/log/nscell-daemon.log" \
     "${_log_dir}/nscell-daemon.log" 2>/dev/null || true
+  sudo incus file pull "${_vm_name}/var/log/nscell-runtime-invocations.log" \
+    "${_log_dir}/nscell-runtime-invocations.log" 2>/dev/null || true
+  sudo incus file pull "${_vm_name}/var/log/nscell-runtime.log" \
+    "${_log_dir}/nscell-runtime.log" 2>/dev/null || true
 }
 
 __main() {
