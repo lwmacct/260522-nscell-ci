@@ -64,6 +64,13 @@ Validation:
   [build run 35144286764](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35144286764).
   Its qcow2 is 676,790,784 bytes with immutable VM artifact digest
   `sha256:fb8a73b9957de072bb714d601749447c4fccd8fbef3d8d09a5c4bab40748d65c`.
+- The merged `main` build also passed for both production profiles:
+  [build run 35145068241](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35145068241).
+  The current standard qcow2 is 676,659,712 bytes with immutable VM artifact
+  digest `sha256:6470c3e3ccca6a4d1566a4ed2a3b3d74f2273e880815d1a0ed5e64f6cc57f39f`;
+  the trimmed Linux-floor qcow2 is 795,617,792 bytes.
+- The merged `main` static, standard smoke, and Linux-floor smoke checks passed:
+  [check run 35145068726](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35145068726).
 
 Measurements:
 
