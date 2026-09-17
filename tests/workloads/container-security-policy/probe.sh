@@ -38,10 +38,7 @@ __check_resources() {
 	for _fs in securityfs debugfs tracefs configfs; do
 		_target="$_base/unsafe-$_fs"
 		mkdir -p "$_target"
-		if mount -t "$_fs" "$_fs" "$_target" 2>"$_base/$_fs.err"; then
-			echo "$_fs mount unexpectedly succeeded" >&2
-			exit 1
-		fi
+		__check_unsafe_mount "$_fs" "$_target"
 	done
 
 	if mount -t cgroup2 cgroup "$_base/cgroup-rw" 2>"$_base/cgroup-rw.err"; then
@@ -77,13 +74,28 @@ __check_cgroup_subtree_mount_policy() {
 	for _fs in securityfs debugfs tracefs configfs; do
 		_target="$_base/unsafe-$_fs"
 		mkdir -p "$_target"
-		if mount -t "$_fs" "$_fs" "$_target" 2>"$_base/$_fs.err"; then
-			echo "$_fs mount unexpectedly succeeded from delegated child cgroup" >&2
-			exit 1
-		fi
+		__check_unsafe_mount "$_fs" "$_target"
 	done
 
 	echo "cgroup-subtree-mount-policy-ok"
+}
+
+__check_unsafe_mount() {
+	python3 - "$1" "$2" <<'PY'
+import ctypes
+import errno
+import sys
+
+fs_type, target = sys.argv[1:]
+libc = ctypes.CDLL(None, use_errno=True)
+libc.mount.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_ulong, ctypes.c_void_p]
+libc.mount.restype = ctypes.c_int
+ctypes.set_errno(0)
+result = libc.mount(fs_type.encode(), target.encode(), fs_type.encode(), 0, None)
+error = ctypes.get_errno()
+if result != -1 or error != errno.EPERM:
+    raise SystemExit(f"{fs_type} mount: result={result} errno={error}, want EPERM")
+PY
 }
 
 __expect_eperm_path() {
