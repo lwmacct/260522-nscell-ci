@@ -313,6 +313,7 @@ __restart_nscell_services() {
     awk '/^nscell-(docker-in-docker|kubernetes-k3s|systemd-pid1|procfs-memory|procfs-cpu|seccomp-notify-concurrency|container-security-policy)/ { print }' |
     xargs -r docker rm -f >/dev/null 2>&1 || true
   sudo truncate -s 0 "$_daemon_log" 2>/dev/null || sudo install -m 0600 /dev/null "$_daemon_log"
+  sudo rm -f "${_daemon_log}".startup-attempt-*
   sudo truncate -s 0 /var/log/nscell-runtime-invocations.log 2>/dev/null || true
   sudo truncate -s 0 /var/log/nscell-runtime.log 2>/dev/null || true
   sudo systemctl reset-failed docker.service nscell-daemon.service || true
@@ -337,10 +338,51 @@ __restart_nscell_services() {
   if sudo test -d /var/lib/nscellfs; then
     sudo find /var/lib/nscellfs -mindepth 1 -maxdepth 1 -xdev -exec rm -rf -- {} + 2>/dev/null || true
   fi
-  sudo systemctl restart nscell-daemon.service
-  sudo systemctl is-active --quiet nscell-daemon.service
+  __start_nscell_daemon
   sudo systemctl restart docker
   __assert_nscell_ready
+}
+
+__start_nscell_daemon() {
+  local _attempt _wait _main_pid _attempt_log
+
+  for _attempt in 1 2; do
+    __log "starting nscell-daemon (${_attempt}/2)"
+    sudo systemctl reset-failed nscell-daemon.service || true
+    if ! sudo systemctl start --no-block nscell-daemon.service; then
+      __log "systemd rejected nscell-daemon start attempt ${_attempt}"
+    fi
+
+    for _wait in $(seq 1 30); do
+      if sudo systemctl is-active --quiet nscell-daemon.service; then
+        return 0
+      fi
+      if sudo systemctl is-failed --quiet nscell-daemon.service; then
+        break
+      fi
+      sleep 1
+    done
+
+    __log "nscell-daemon did not become ready on attempt ${_attempt}"
+    _main_pid="$(sudo systemctl show --property MainPID --value nscell-daemon.service)"
+    if [[ "$_main_pid" =~ ^[1-9][0-9]*$ ]]; then
+      sudo systemctl kill --kill-whom=main --signal=SIGQUIT nscell-daemon.service || true
+      sleep 1
+    fi
+    sudo systemctl --no-pager --full status nscell-daemon.service || true
+    sudo journalctl --no-pager -n 300 -u nscell-daemon.service || true
+    if sudo test -f "$_daemon_log"; then
+      _attempt_log="${_daemon_log}.startup-attempt-${_attempt}"
+      sudo cp "$_daemon_log" "$_attempt_log"
+      sudo chmod 0644 "$_attempt_log"
+      sudo cat "$_daemon_log"
+    fi
+
+    sudo systemctl stop nscell-daemon.service || true
+    sudo rm -f /run/nscell/daemon.sock /run/nscell/daemon.pid
+  done
+
+  return 1
 }
 
 __verify_gate() {
@@ -395,6 +437,7 @@ __run_workload() {
 
 __collect_logs() {
   local _log_dir="${_test_root}/runs/${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}/logs"
+  local _startup_log
   sudo install -d -m 0755 "$_log_dir"
   {
     uname -a || true
@@ -415,6 +458,11 @@ __collect_logs() {
     sudo cp "$_daemon_log" "${_log_dir}/nscell-daemon.log"
     sudo chmod 0644 "${_log_dir}/nscell-daemon.log"
   fi
+  for _startup_log in "${_daemon_log}".startup-attempt-*; do
+    sudo test -f "$_startup_log" || continue
+    sudo cp "$_startup_log" "${_log_dir}/$(basename "$_startup_log")"
+    sudo chmod 0644 "${_log_dir}/$(basename "$_startup_log")"
+  done
 }
 
 __usage() {
