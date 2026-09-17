@@ -174,8 +174,11 @@ authentication remains only for fetching the VM artifact.
 
 Validation:
 
-- Public CI will validate the changed VM smoke/gate paths after this change is
-  pushed. Compare the bundled light-group and full-gate durations with run
+- [Check run 35264235667](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35264235667)
+  passed static checks plus the standard VM smoke, light-group, and
+  new-mount-api-deny paths. A full gate was not continued while the current
+  NSCell candidate has a separate known bug.
+- Compare the next clean bundled gate with run
   [35185454344](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35185454344).
 - If the larger Python rootfs materially increases cumulative gate time, split
   the smallest BusyBox-compatible base back out as a pinned preloaded image
