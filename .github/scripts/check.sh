@@ -128,6 +128,20 @@ __check_vm_guest_image_policy() {
 	fi
 }
 
+__check_vm_host_setup_policy() {
+	local _matches
+
+	_matches="$(
+		git grep -n -I -E 'pkgs\.zabbly\.com|apt-get update' -- \
+			'.github/actions/incus-vm-setup' || true
+	)"
+	if [[ -n "${_matches}" ]]; then
+		echo "VM host setup must use cached distro apt indexes:" >&2
+		printf '%s\n' "${_matches}" >&2
+		return 1
+	fi
+}
+
 __check_retired_gate_mode() {
 	local _matches
 
@@ -170,6 +184,7 @@ __main() {
 	__check_manifest
 	__check_python_image_pin
 	__check_vm_guest_image_policy
+	__check_vm_host_setup_policy
 	__check_retired_gate_mode
 	__check_retired_gate_status_fields
 	actionlint

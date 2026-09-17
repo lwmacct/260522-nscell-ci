@@ -1,8 +1,8 @@
 # NSCell VM validation
 
 This repository owns dedicated AMD64 Incus VM images for NSCell runtime
-validation. The images are built with `distrobuilder`, while the runner installs
-Incus from the signed Zabbly source at `pkgs.zabbly.com`.
+validation. The images are built with `distrobuilder`. Runtime runners install
+the Ubuntu archive Incus package without refreshing apt indexes.
 
 One production profile is maintained:
 

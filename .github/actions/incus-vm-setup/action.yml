@@ -1,5 +1,5 @@
 name: Setup Incus VM host
-description: Install Zabbly Incus and QEMU, initialize managed networking, and size one VM
+description: Install Incus and QEMU, initialize managed networking, and size one VM
 
 inputs:
   host_memory_reserve_mib:
@@ -21,44 +21,26 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Install Incus from Zabbly
+    - name: Install Incus host packages
       shell: bash
       run: |
         __main() {
-          local _architecture _codename
-
           set -euo pipefail
-          sudo install -d -m 0755 /etc/apt/keyrings
-          sudo curl -fsSL https://pkgs.zabbly.com/key.asc \
-            -o /etc/apt/keyrings/zabbly.asc
-          _codename="$(. /etc/os-release && echo "${VERSION_CODENAME}")"
-          _architecture="$(dpkg --print-architecture)"
-          sudo tee /etc/apt/sources.list.d/zabbly-incus-stable.sources >/dev/null <<EOF
-        Enabled: yes
-        Types: deb
-        URIs: https://pkgs.zabbly.com/incus/stable
-        Suites: ${_codename}
-        Components: main
-        Architectures: ${_architecture}
-        Signed-By: /etc/apt/keyrings/zabbly.asc
-        EOF
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            ca-certificates \
-            curl \
+
+          # The Ubuntu 26.04 runner image retains apt indexes. Install from the
+          # distro archive without refreshing every configured repository.
+          if apt-cache policy incus | grep -qi zabbly >/dev/null; then
+            echo "unexpected Zabbly candidate for Incus" >&2
+            return 1
+          fi
+          sudo env DEBIAN_FRONTEND=noninteractive \
+            apt-get -o Dpkg::Use-Pty=0 install \
+            --yes --no-install-recommends \
             dnsmasq-base \
-            gdisk \
-            iptables \
-            iputils-ping \
-            jq \
+            incus \
             ovmf \
             qemu-system-modules-spice \
-            qemu-system-x86 \
-            qemu-utils \
-            xz-utils \
-            incus
-          apt-cache policy incus | grep -F \
-            'https://pkgs.zabbly.com/incus/stable' >/dev/null
+            qemu-utils
         }
 
         __main "$@"
