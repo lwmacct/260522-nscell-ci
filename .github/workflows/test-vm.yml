@@ -184,7 +184,7 @@ jobs:
 
       - name: Setup Incus host
         id: incus
-        uses: ./.github/actions/setup-incus
+        uses: ./.github/actions/incus-setup
 
       - name: Pull and verify VM image
         id: image
@@ -204,7 +204,7 @@ jobs:
 
       - name: Start isolated VM
         id: vm
-        uses: ./.github/actions/start-incus-vm
+        uses: ./.github/actions/incus-start-vm
         with:
           image_dir: ${{ steps.image.outputs.image_dir }}
           share_dir: ${{ steps.share.outputs.share_dir }}
@@ -224,7 +224,7 @@ jobs:
 
       - name: Cleanup isolated VM
         if: always()
-        uses: ./.github/actions/cleanup-incus-vm
+        uses: ./.github/actions/incus-cleanup-vm
         with:
           test_target: ${{ matrix.name }}
           log_dir: ${{ runner.temp }}/test-vm-${{ matrix.name }}-logs
