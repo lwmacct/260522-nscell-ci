@@ -90,6 +90,8 @@ __check_python_image_pin() {
 
 	_references="$(
 		git grep -n -I 'python:3\.12-alpine' -- \
+			'.github/actions/run-vm-workload/run.sh' \
+			'.github/workflows/build-vm-standard.yml' \
 			'tests/library/env.sh' \
 			'tests/workloads/*/Dockerfile' || true
 	)"
@@ -108,6 +110,20 @@ __check_python_image_pin() {
 	)
 	if ((${#_digests[@]} != 1)); then
 		echo "Python base image references do not share one digest" >&2
+		return 1
+	fi
+}
+
+__check_vm_guest_image_policy() {
+	local _matches
+
+	_matches="$(
+		git grep -n -I -E 'busybox:1\.37\.0|NSCELL_REGISTRY_(USERNAME|TOKEN)|oras (login|logout) ghcr\.io' -- \
+			'.github/actions/run-vm-workload' 'tests' || true
+	)"
+	if [[ -n "${_matches}" ]]; then
+		echo "retired VM guest image or registry credential reference found:" >&2
+		printf '%s\n' "${_matches}" >&2
 		return 1
 	fi
 }
@@ -153,6 +169,7 @@ __main() {
 	__check_python
 	__check_manifest
 	__check_python_image_pin
+	__check_vm_guest_image_policy
 	__check_retired_gate_mode
 	__check_retired_gate_status_fields
 	actionlint

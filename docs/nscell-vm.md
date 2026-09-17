@@ -14,9 +14,9 @@ One production profile is maintained:
 
 The profile contains the Incus VM agent, the Docker runtime stack, FUSE and
 idmap utilities, diagnostics, and a guest GRUB command line that enables the
-BPF LSM. It does not contain an NSCell binary; each test workflow accepts an nscell OCI
-image, extracts its AMD64 binary on the GitHub runner, and exposes it to a
-disposable VM through a read-only Incus disk share.
+BPF LSM. It does not contain an NSCell binary; each disposable guest accepts an
+exact public NSCell OCI image reference, fetches its AMD64 layers with ORAS,
+and installs the extracted binary without guest registry credentials.
 
 The profiles intentionally omit a guest compiler toolchain. Runtime workloads
 must not depend on building probes inside the guest; the staged plan for a
@@ -59,8 +59,11 @@ any published nscell image.
 Before expanding the VM matrix, the workflow resolves the requested VM tag to
 an immutable OCI digest. Every isolated VM in that run therefore consumes the
 same image even if the stable profile tag changes while tests are running.
-The smoke workflow also pulls and exports its BusyBox image on the runner, so
-the guest setup and smoke test do not depend on guest network access. Test
+The standard image's Docker store contains the pinned Python Alpine image used
+by Python-derived workloads and by the lightweight OCI-bundle workloads. The
+smoke target runs that preloaded image with `--pull=never`; it does not provide
+an offline-guest guarantee because the NSCell OCI image is still fetched inside
+the VM. Uncached heavyweight workload images are also fetched normally. Test
 assets and a CI repository snapshot are exposed through one read-only Incus
 `9p` directory share. The runner explicitly selects `9p` because the default
 `virtiofs` transport conflicts with PCI allocation on GitHub-hosted runners.

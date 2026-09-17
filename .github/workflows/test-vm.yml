@@ -15,7 +15,7 @@ on:
         default: ""
         type: string
       nscell_image:
-        description: Exact OCI image containing the NSCell binary
+        description: Exact public OCI image containing the NSCell binary
         required: true
         type: string
       suite:
@@ -46,7 +46,7 @@ on:
         default: ""
         type: string
       nscell_image:
-        description: Exact OCI image containing the NSCell binary
+        description: Exact public OCI image containing the NSCell binary
         required: true
         type: string
       suite:
@@ -219,8 +219,6 @@ jobs:
           test_target: ${{ matrix.name }}
           test_targets_json: ${{ toJSON(matrix.targets) }}
           nscell_image: ${{ inputs.nscell_image }}
-          registry_username: ${{ github.actor }}
-          registry_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cleanup isolated VM
         if: always()

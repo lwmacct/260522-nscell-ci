@@ -12,15 +12,8 @@ inputs:
     description: JSON array of concrete targets to execute in this VM
     required: true
   nscell_image:
-    description: Exact OCI image containing the NSCell binary
+    description: Exact public OCI image containing the NSCell binary
     required: true
-  registry_username:
-    description: GHCR username used inside the guest
-    required: true
-  registry_token:
-    description: GHCR token used inside the guest
-    required: false
-    default: ""
 
 runs:
   using: composite
@@ -32,6 +25,4 @@ runs:
         TEST_TARGET: ${{ inputs.test_target }}
         TEST_TARGETS_JSON: ${{ inputs.test_targets_json }}
         NSCELL_IMAGE: ${{ inputs.nscell_image }}
-        REGISTRY_USERNAME: ${{ inputs.registry_username }}
-        REGISTRY_TOKEN: ${{ inputs.registry_token }}
       run: bash "${{ github.action_path }}/run.sh"

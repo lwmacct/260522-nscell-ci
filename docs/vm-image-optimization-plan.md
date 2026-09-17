@@ -15,7 +15,8 @@ Status: **complete in this change**
 - Remove unused guest compiler and development packages from both VM profiles:
   `build-essential`, `gcc`, `libseccomp-dev`, and `pkg-config`.
 - Keep the explicit BusyBox pull in the smoke target so a real network pull and
-  image extraction path remain covered.
+  image extraction path remain covered. The September 18 follow-up below later
+  replaced that separate image with the already-pinned Python Alpine base.
 
 Expected effect:
 
@@ -87,8 +88,8 @@ Measurements:
   Docker-in-Docker, so gate wall time is bounded by that workload rather than
   Python image preparation.
 
-The smoke BusyBox pull remains live, preserving real image-pull and extraction
-coverage.
+The smoke BusyBox pull remained live at this stage, preserving real image-pull
+and extraction coverage; the September 18 follow-up below later removed it.
 
 ## Phase 3: bundled lightweight VM workloads
 
@@ -153,6 +154,32 @@ independently:
 - Avoid rebuilding unchanged workload images.
 - Split heavyweight coverage into an explicitly selected fast profile.
 - Preserve at least one real image pull and extraction test in every gate.
+
+## September 18 follow-up: reuse the Python Alpine base
+
+Status: **implemented in this change**
+
+The lightweight OCI-bundle workloads and smoke target now use the same pinned
+`python:3.12-alpine` image already stored in the standard VM image. Python
+Alpine includes the BusyBox shell and utilities used by those tests, including
+`httpd`, `wget`, `sleep`, and `tail`, so a separate BusyBox image is no longer
+fetched. This intentionally trades a larger OCI-bundle rootfs for one fewer
+cached image and no Docker Hub dependency in the lightweight path; heavyweight
+workloads still exercise real image pulls.
+
+The VM workload action also no longer receives `GITHUB_TOKEN` or performs an
+in-guest ORAS login. Runtime candidates are published as public GHCR images, so
+the guest fetches their exact manifests and layers anonymously. Runner-side
+authentication remains only for fetching the VM artifact.
+
+Validation:
+
+- Public CI will validate the changed VM smoke/gate paths after this change is
+  pushed. Compare the bundled light-group and full-gate durations with run
+  [35185454344](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35185454344).
+- If the larger Python rootfs materially increases cumulative gate time, split
+  the smallest BusyBox-compatible base back out as a pinned preloaded image
+  rather than restoring a per-workload network pull.
 
 ## Baseline observations
 
