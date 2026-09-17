@@ -446,6 +446,24 @@ def statmount_by_fd(fd, attached):
         raise SystemExit(f"detached STATMOUNT_BY_FD leaked namespace fields: mask={returned:#x}")
     return returned_mount
 
+def statx_mount_id_by_fd(fd):
+    output = ctypes.create_string_buffer(256)
+    syscall(
+        statx_number,
+        ctypes.c_int(fd),
+        ctypes.c_char_p(b""),
+        ctypes.c_uint(0x1000),
+        ctypes.c_uint(STATX_MNT_ID_UNIQUE),
+        output,
+    )
+    returned_mask = struct.unpack_from("=I", output, 0)[0]
+    returned_mount = struct.unpack_from("=Q", output, 144)[0]
+    if returned_mask & STATX_MNT_ID_UNIQUE == 0 or returned_mount == 0:
+        raise SystemExit(
+            f"detached STATX_MNT_ID_UNIQUE unavailable: fd={fd} mask={returned_mask:#x}"
+        )
+    return returned_mount
+
 attached_root_fd = os.open("/", os.O_PATH | os.O_CLOEXEC)
 try:
     attached_by_fd_mount = statmount_by_fd(attached_root_fd, True)
@@ -458,6 +476,7 @@ try:
     except OSError as error:
         if error.errno != errno.ENOENT:
             raise
+    detached_proc_statx_mount = statx_mount_id_by_fd(detached_proc_fd)
 finally:
     os.close(detached_proc_fd)
 
@@ -467,6 +486,27 @@ if attached_by_fd_mount != mount_id:
     )
 if detached_by_fd_mount is not None:
     raise SystemExit("detached procfs STATMOUNT_BY_FD unexpectedly exposed a mount namespace")
+
+tmpfs_fsfd = syscall(430, b"tmpfs", ctypes.c_uint(1))
+try:
+    syscall(431, ctypes.c_int(tmpfs_fsfd), ctypes.c_uint(6), None, None, ctypes.c_int(0))
+    detached_tmpfs_fd = syscall(
+        432,
+        ctypes.c_int(tmpfs_fsfd),
+        ctypes.c_uint(FSMOUNT_CLOEXEC),
+        ctypes.c_uint(0),
+    )
+    try:
+        try:
+            statmount_by_fd(detached_tmpfs_fd, False)
+        except OSError as error:
+            if error.errno != errno.ENOENT:
+                raise
+        detached_tmpfs_statx_mount = statx_mount_id_by_fd(detached_tmpfs_fd)
+    finally:
+        os.close(detached_tmpfs_fd)
+finally:
+    os.close(tmpfs_fsfd)
 
 listns_request = NsIDReq(
     size=ctypes.sizeof(NsIDReq),
@@ -493,7 +533,9 @@ print(
     f"release={platform.release()} mount_id={mount_id} mount_ns={info.mnt_ns_id} "
     f"mounts={info.nr_mounts} listed={count} pidfd=available pidfd_getfd=available "
     f"clone3_cgroup=available open_tree_namespace=available statmount_by_fd=available "
-    f"proc_pidns=available detached_statmount=enoent fuse_sync_init=available "
+    "proc_pidns=available detached_statmount=enoent "
+    f"detached_statx={detached_proc_statx_mount}/{detached_tmpfs_statx_mount} "
+    "fuse_sync_init=available "
     f"listns={namespace_count}"
 )
 PY
