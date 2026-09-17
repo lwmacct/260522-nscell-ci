@@ -47,7 +47,7 @@ __main() {
     --runtime nscell \
     --label io.backend.security.profile=default \
     "$_oci_base_image" \
-    /bin/sh -c 'mkdir /www; printf shared-netns-ok > /www/index.html; exec httpd -f -p 8080 -h /www' \
+    /bin/sh -c 'mkdir /www; printf shared-netns-ok > /www/index.html; exec python3 -m http.server 8080 --directory /www' \
     >/dev/null
 
   if ! __assert_running "$_shared_netns_primary_name"; then
