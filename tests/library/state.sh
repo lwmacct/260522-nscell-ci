@@ -88,33 +88,3 @@ __assert_state_map_lacks_id() {
   jq -e --arg _id "$_id" --arg _map "$_map" \
     '((. // {})[$_map] // {}) | has($_id) | not' <<<"$_snapshot" >/dev/null
 }
-
-__dump_nscell_state_snapshots() {
-  local _path="${1:-/var/lib/nscell/state/events.log}"
-  local _kind _subject _snapshot
-  local -a _domains=(
-    "subid allocator"
-    "leases control-plane"
-    "volume buildkit"
-    "volume containerd"
-    "volume docker"
-    "volume k0s"
-    "volume kubelet"
-    "volume rancher-k3s"
-    "volume rancher-rke2"
-  )
-
-  if ! sudo test -f "$_path"; then
-    return 0
-  fi
-
-  for _domain in "${_domains[@]}"; do
-    read -r _kind _subject <<<"$_domain"
-    printf '\n--- nscell state %s/%s ---\n' "$_kind" "$_subject" >&2
-    if _snapshot="$(__nscell_state_snapshot "$_kind" "$_subject" "$_path" 2>/dev/null)"; then
-      jq . <<<"$_snapshot" >&2 || true
-    else
-      echo "state snapshot unavailable" >&2
-    fi
-  done
-}

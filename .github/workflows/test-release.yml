@@ -45,29 +45,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  preflight:
-    name: Runtime preflight
-    if: inputs.vm_targets == '' && (inputs.vm_suite == 'gate' || inputs.vm_suite == 'full')
-    uses: ./.github/workflows/test-vm.yml
-    with:
-      image_name: standard
-      image_ref: ${{ inputs.vm_image_ref }}
-      nscell_image: ${{ inputs.nscell_image }}
-      suite: smoke
-      targets: smoke
-      grouping: isolated
-    secrets: inherit
-
   vm:
     name: VM ${{ inputs.vm_suite }}
-    needs: preflight
-    if: always() && !failure() && (inputs.vm_targets != '' || (inputs.vm_suite != 'gate' && inputs.vm_suite != 'full') || needs.preflight.result == 'success')
     uses: ./.github/workflows/test-vm.yml
     with:
       image_name: standard
       image_ref: ${{ inputs.vm_image_ref }}
       nscell_image: ${{ inputs.nscell_image }}
       suite: ${{ inputs.vm_suite }}
-      targets: ${{ inputs.vm_targets != '' && inputs.vm_targets || (inputs.vm_suite == 'smoke' && 'smoke' || '') }}
+      targets: ${{ inputs.vm_targets }}
       grouping: ${{ inputs.vm_grouping }}
     secrets: inherit

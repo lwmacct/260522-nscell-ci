@@ -110,6 +110,9 @@ __select() {
 	esac
 
 	__validate
+	if [[ -z "${_explicit}" && "${_suite}" == smoke ]]; then
+		_explicit="smoke"
+	fi
 	if [[ -n "${_explicit}" ]]; then
 		_targets_json="$(__explicit_targets_json "${_explicit}")"
 		while IFS= read -r _target; do

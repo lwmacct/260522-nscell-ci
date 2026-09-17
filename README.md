@@ -38,12 +38,11 @@ remain under `tests/workloads/systemd-pid1/` and are injected at test time, so
 the published image contains no workload assertions.
 
 `Test release` is the product-facing `workflow_dispatch` entry point and
-defaults to the full `gate` suite. Before `gate` or `full` expands, it runs one
-concrete `smoke` VM; choosing `smoke` for an investigation loop uses that same
-single VM. Explicit targets bypass both the suite matrix and preflight. `Test
-workloads in VM` remains manually dispatchable for focused runs and debugging.
-Runs, billing, matrix jobs, logs, and artifacts remain in this public
-repository. The test runner fetches the selected
+defaults to the full `gate` suite without an embedded preflight. Choosing the
+`smoke` suite selects only the standalone `smoke` probe. Explicit targets
+bypass the suite matrix for focused debugging. `Test workloads in VM` remains
+manually dispatchable. Runs, billing, matrix jobs, logs, and artifacts remain
+in this public repository. The test runner fetches the selected
 linux/amd64 image manifest and layers, extracts `/usr/local/bin/nscell`, then
 installs the binary and the
 `nscell-daemon.service` systemd unit.

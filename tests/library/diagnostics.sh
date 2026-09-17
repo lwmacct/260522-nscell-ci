@@ -27,5 +27,4 @@ __dump_debug() {
     grep -E 'panic:|SIGSEGV|nsenter|mount denied|mount .*failed|Error during syscall|Version:|Commit-ID:' >&2 || true
   tail -160 "$_daemon_log" 2>/dev/null |
     grep -E 'panic:|SIGSEGV|degraded|data plane|failed|Version:|Commit-ID:' >&2 || true
-  __dump_nscell_state_snapshots
 }
