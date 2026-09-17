@@ -10,8 +10,9 @@ Two production profiles are maintained:
   It provides broad current-kernel workload coverage and contains the unpacked
   Docker image store for the pinned Python Alpine base used by repeated runtime
   workloads.
-- `images/linux-6-18.yaml` is Debian 13 with the stable 6.18 kernel. It is the
-  exact floor gate and is used for `kernel-capability-smoke`.
+- `images/linux-7-0.yaml` is Ubuntu 26.04 with the archive's
+  `linux-image-virtual-hwe-26.04` kernel. It verifies the exact
+  `7.0.0-X-generic` floor and is used for `kernel-capability-smoke`.
 
 Both contain the Incus VM agent, the Docker runtime stack, FUSE and idmap
 utilities, diagnostics, and a guest GRUB command line that enables the BPF LSM.
@@ -51,8 +52,9 @@ The artifact contains `incus.tar.xz`, `disk.qcow2`, and `SHA256SUMS`.
   security host execution mode has been removed.
 - The special `smoke` target checks BPF LSM, nscell daemon readiness, Docker
   runtime registration, and one `busybox` container.
-- Release validation also runs `kernel-capability-smoke` on the Debian 6.18
-  floor profile. A current-kernel standard VM run cannot replace that gate.
+- Release validation also runs `kernel-capability-smoke` on the Ubuntu 26.04
+  Linux 7.0 floor profile. A current-kernel standard VM run cannot replace
+  that gate.
 
 Both test workflows accept `nscell_image`. The nscell release workflow passes
 an immutable digest and waits for their results, while manual runs can select

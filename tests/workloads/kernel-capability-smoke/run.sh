@@ -15,11 +15,11 @@ __require_kernel_floor() {
   local _profile _release _version_floor
 
   _release="$(uname -r)"
-  _version_floor="$(printf '%s\n%s\n' '6.18.0' "${_release%%-*}" | sort -V | head -1)"
-  [[ "${_version_floor}" == '6.18.0' ]]
+  _version_floor="$(printf '%s\n%s\n' '7.0.0' "${_release%%-*}" | sort -V | head -1)"
+  [[ "${_version_floor}" == '7.0.0' ]]
   _profile="$(cat /etc/test-vm-profile 2>/dev/null || true)"
-  if [[ "${_profile}" == *"IMAGE_PROFILE=linux-6-18"* ]]; then
-    [[ "${_release}" == 6.18.52-061852-generic ]]
+  if [[ "${_profile}" == *"IMAGE_PROFILE=linux-7-0"* ]]; then
+    [[ "${_release}" =~ ^7\.0\.0-[0-9]+-generic$ ]]
   fi
 }
 
@@ -93,6 +93,16 @@ class MntNSInfo(ctypes.Structure):
         ("size", ctypes.c_uint32),
         ("nr_mounts", ctypes.c_uint32),
         ("mnt_ns_id", ctypes.c_uint64),
+    ]
+
+class NsIDReq(ctypes.Structure):
+    _fields_ = [
+        ("size", ctypes.c_uint32),
+        ("spare", ctypes.c_uint32),
+        ("ns_id", ctypes.c_uint64),
+        ("ns_type", ctypes.c_uint32),
+        ("spare2", ctypes.c_uint32),
+        ("user_ns_id", ctypes.c_uint64),
     ]
 
 nsfd = os.open("/proc/self/ns/mnt", os.O_RDONLY | os.O_CLOEXEC)
@@ -346,9 +356,136 @@ count = syscall(
     0,
 )
 if count <= 0 or mount_ids[0] == 0:
-    raise SystemExit(f"listmount returned no mounts: count={count}")
+  raise SystemExit(f"listmount returned no mounts: count={count}")
 if statmount_size == 0:
-    raise SystemExit("statmount returned a zero result size")
+  raise SystemExit("statmount returned a zero result size")
+
+FUSE_DEV_IOC_SYNC_INIT = 0xE503
+fuse_fd = os.open("/dev/fuse", os.O_RDWR | os.O_CLOEXEC)
+try:
+    ctypes.set_errno(0)
+    if libc.ioctl(ctypes.c_int(fuse_fd), ctypes.c_ulong(FUSE_DEV_IOC_SYNC_INIT)) != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+finally:
+    os.close(fuse_fd)
+
+OPEN_TREE_NAMESPACE = 1 << 1
+OPEN_TREE_CLOEXEC = 0x80000
+FSMOUNT_CLOEXEC = 1
+NS_GET_NSTYPE = 0xB703
+CLONE_NEWNS = 0x00020000
+tree_namespace_fd = syscall(
+    428,
+    ctypes.c_int(-100),
+    b"/",
+    ctypes.c_uint(OPEN_TREE_NAMESPACE | OPEN_TREE_CLOEXEC),
+)
+try:
+    ctypes.set_errno(0)
+    namespace_type = libc.ioctl(ctypes.c_int(tree_namespace_fd), ctypes.c_ulong(NS_GET_NSTYPE))
+    if namespace_type != CLONE_NEWNS:
+        raise SystemExit(f"OPEN_TREE_NAMESPACE returned type {namespace_type:#x}")
+finally:
+    os.close(tree_namespace_fd)
+
+pidns_fd = os.open("/proc/self/ns/pid", os.O_RDONLY | os.O_CLOEXEC)
+fsfd = syscall(430, b"proc", ctypes.c_uint(1))
+try:
+    syscall(
+        431,
+        ctypes.c_int(fsfd),
+        ctypes.c_uint(5),
+        b"pidns",
+        None,
+        ctypes.c_int(pidns_fd),
+    )
+    syscall(431, ctypes.c_int(fsfd), ctypes.c_uint(6), None, None, ctypes.c_int(0))
+    detached_proc_fd = syscall(432, ctypes.c_int(fsfd), ctypes.c_uint(FSMOUNT_CLOEXEC), ctypes.c_uint(0))
+    detached_by_fd_mount = None
+finally:
+    os.close(pidns_fd)
+    os.close(fsfd)
+
+STATMOUNT_BY_FD = 1
+STATMOUNT_MNT_POINT = 0x10
+STATMOUNT_FS_TYPE = 0x20
+
+def statmount_by_fd(fd, attached):
+    param = STATMOUNT_MNT_BASIC | STATMOUNT_FS_TYPE
+    if attached:
+        param |= STATMOUNT_MNT_POINT | STATMOUNT_MNT_NS_ID
+    output = ctypes.create_string_buffer(4096)
+    request = MntIDReq(
+        size=ctypes.sizeof(MntIDReq),
+        spare=fd,
+        mnt_id=0,
+        param=param,
+        mnt_ns_id=0,
+    )
+    syscall(
+        457,
+        ctypes.byref(request),
+        output,
+        ctypes.c_size_t(ctypes.sizeof(output)),
+        ctypes.c_ulong(STATMOUNT_BY_FD),
+    )
+    returned = struct.unpack_from("=Q", output, 8)[0]
+    returned_mount = struct.unpack_from("=Q", output, 40)[0]
+    returned_namespace = struct.unpack_from("=Q", output, 112)[0]
+    if returned & (STATMOUNT_MNT_BASIC | STATMOUNT_FS_TYPE) != (
+        STATMOUNT_MNT_BASIC | STATMOUNT_FS_TYPE
+    ) or returned_mount == 0:
+        raise SystemExit(f"STATMOUNT_BY_FD fields unavailable: fd={fd} mask={returned:#x}")
+    if attached and (
+        returned & (STATMOUNT_MNT_POINT | STATMOUNT_MNT_NS_ID)
+        != (STATMOUNT_MNT_POINT | STATMOUNT_MNT_NS_ID)
+        or returned_namespace == 0
+    ):
+        raise SystemExit(f"attached STATMOUNT_BY_FD namespace unavailable: mask={returned:#x}")
+    if not attached and (
+        returned & (STATMOUNT_MNT_POINT | STATMOUNT_MNT_NS_ID) != 0
+        or returned_namespace != 0
+    ):
+        raise SystemExit(f"detached STATMOUNT_BY_FD leaked namespace fields: mask={returned:#x}")
+    return returned_mount
+
+attached_root_fd = os.open("/", os.O_PATH | os.O_CLOEXEC)
+try:
+    attached_by_fd_mount = statmount_by_fd(attached_root_fd, True)
+finally:
+    os.close(attached_root_fd)
+
+try:
+    try:
+        detached_by_fd_mount = statmount_by_fd(detached_proc_fd, False)
+    except OSError as error:
+        if error.errno != errno.ENOENT:
+            raise
+finally:
+    os.close(detached_proc_fd)
+
+if attached_by_fd_mount != mount_id:
+    raise SystemExit(
+        f"STATMOUNT_BY_FD identity mismatch: attached={attached_by_fd_mount} statx={mount_id}"
+    )
+if detached_by_fd_mount is not None:
+    raise SystemExit("detached procfs STATMOUNT_BY_FD unexpectedly exposed a mount namespace")
+
+listns_request = NsIDReq(
+    size=ctypes.sizeof(NsIDReq),
+    user_ns_id=0xFFFFFFFFFFFFFFFF,
+)
+namespace_ids = (ctypes.c_uint64 * 16)()
+namespace_count = syscall(
+    470,
+    ctypes.byref(listns_request),
+    namespace_ids,
+    ctypes.c_size_t(len(namespace_ids)),
+    ctypes.c_uint(0),
+)
+if namespace_count <= 0:
+    raise SystemExit(f"listns returned no namespaces: count={namespace_count}")
 
 pidfd = syscall(434, os.getpid(), 0, 0)
 if pidfd < 0:
@@ -359,7 +496,9 @@ print(
     "kernel-capability-probe-ok "
     f"release={platform.release()} mount_id={mount_id} mount_ns={info.mnt_ns_id} "
     f"mounts={info.nr_mounts} listed={count} pidfd=available pidfd_getfd=available "
-    "clone3_cgroup=available"
+    f"clone3_cgroup=available open_tree_namespace=available statmount_by_fd=available "
+    f"proc_pidns=available detached_statmount=enoent fuse_sync_init=available "
+    f"listns={namespace_count}"
 )
 PY
 }

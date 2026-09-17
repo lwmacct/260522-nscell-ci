@@ -143,14 +143,14 @@ jobs:
     secrets: inherit
 
   vm-floor-smoke:
-    name: VM Linux 6.18 floor smoke
+    name: VM Linux 7.0 floor smoke
     needs:
       - static
       - changes
     if: needs.changes.outputs.runtime == 'true'
     uses: ./.github/workflows/test-vm.yml
     with:
-      image_name: linux-6-18
+      image_name: linux-7-0
       nscell_image: ${{ needs.changes.outputs.nscell_image }}
       suite: smoke
       targets: kernel-capability-smoke,fuse-copy-file-range,new-mount-api-deny

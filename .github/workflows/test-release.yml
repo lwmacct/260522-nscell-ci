@@ -52,10 +52,10 @@ jobs:
     secrets: inherit
 
   vm-floor:
-    name: VM Linux 6.18 floor
+    name: VM Linux 7.0 floor
     uses: ./.github/workflows/test-vm.yml
     with:
-      image_name: linux-6-18
+      image_name: linux-7-0
       nscell_image: ${{ inputs.nscell_image }}
       suite: smoke
       targets: kernel-capability-smoke,fuse-copy-file-range,new-mount-api-deny
