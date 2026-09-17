@@ -165,7 +165,7 @@ jobs:
           __main "$@"
 
   test:
-    name: ${{ matrix.name }} / ${{ inputs.image_name || 'standard' }} VM
+    name: ${{ inputs.image_name || 'standard' }} VM / ${{ matrix.label }}
     needs: prepare
     runs-on: ubuntu-26.04
     timeout-minutes: ${{ matrix.timeout_minutes }}

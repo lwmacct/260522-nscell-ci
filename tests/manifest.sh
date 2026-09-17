@@ -126,6 +126,7 @@ __select() {
 			{
 				name: $_target.name,
 				kind: $_target.kind,
+				label: $_target.name,
 				timeout_minutes: $_target.modes[$_mode].timeout_minutes
 			}]
 			| sort_by(.name)
@@ -138,10 +139,11 @@ __select() {
 		if [[ "${_grouping}" == bundled ]]; then
 			_selection="$(jq -c '
 				if length == 1 then
-					.[0] | {name, targets: [.name], timeout_minutes}
+					.[0] | {name, label, targets: [.name], timeout_minutes}
 				else
 					{
 						name: "selected",
+						label: (map(.name) | sort | join("+")),
 						targets: map(.name),
 						timeout_minutes: (
 							([.[].timeout_minutes] | max) as $_timeout |
@@ -152,7 +154,7 @@ __select() {
 			[.]
 			' <<<"${_selection}")"
 		else
-			_selection="$(jq -c 'map({name, targets: [.name], timeout_minutes})' <<<"${_selection}")"
+			_selection="$(jq -c 'map({name, label, targets: [.name], timeout_minutes})' <<<"${_selection}")"
 		fi
 	else
 		_selection="$(jq -c --arg _mode "${_mode}" --arg _suite "${_suite}" '
@@ -161,6 +163,7 @@ __select() {
 			select(.modes[$_mode].suites | index($_suite)) |
 			{
 				name: (.modes[$_mode].group // .name),
+				label: (.modes[$_mode].group // .name),
 				target: .name,
 				timeout_minutes: .modes[$_mode].timeout_minutes
 			}]
@@ -172,6 +175,7 @@ __select() {
 				| map(
 					{
 						name: .[0].name,
+						label: .[0].name,
 						targets: (map(.target) | sort),
 						timeout_minutes: (
 							if length == 1 then
@@ -186,7 +190,7 @@ __select() {
 				| sort_by(.name)
 			' <<<"${_selection}")"
 		else
-			_selection="$(jq -c 'sort_by(.name) | map({name: .target, targets: [.target], timeout_minutes})' <<<"${_selection}")"
+			_selection="$(jq -c 'sort_by(.name) | map({name: .target, label: .target, targets: [.target], timeout_minutes})' <<<"${_selection}")"
 		fi
 	fi
 	if [[ "$(jq 'length' <<<"${_selection}")" == 0 ]]; then
