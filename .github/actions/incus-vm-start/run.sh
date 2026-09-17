@@ -13,19 +13,6 @@ _resource_id="run-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}-${_resource_h
 _vm_name="${NSCELL_VM_NAME:-test-vm-${_resource_id}}"
 _image_alias="${_vm_name}-image"
 
-__wait_for_agent() {
-  local _attempt
-
-  for _attempt in $(seq 1 300); do
-    if sudo incus exec "${_vm_name}" -- true >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 1
-  done
-  echo "Incus agent did not become ready within 5 minutes" >&2
-  return 1
-}
-
 __verify_vm_contract() {
   if ! sudo incus exec "${_vm_name}" -- sh -c '
     test -f /etc/test-vm-profile &&
@@ -63,7 +50,7 @@ __main() {
     readonly=true \
     io.bus=9p
   sudo incus --quiet start "${_vm_name}"
-  __wait_for_agent
+  sudo incus wait --timeout=300 --interval=1 "${_vm_name}" agent
   __verify_vm_contract
   printf 'vm_name=%s\n' "${_vm_name}" >> "${GITHUB_OUTPUT}"
   printf 'image_alias=%s\n' "${_image_alias}" >> "${GITHUB_OUTPUT}"
