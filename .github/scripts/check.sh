@@ -42,18 +42,45 @@ PY
 }
 
 __check_manifest() {
-	local _suite _selection
+	local _suite _grouping _selection
 
 	bash tests/manifest.sh validate
-	for _suite in smoke gate full; do
-		_selection="$(bash tests/manifest.sh select vm "${_suite}")"
+	for _grouping in isolated bundled; do
+		for _suite in smoke gate full; do
+			_selection="$(
+				bash tests/manifest.sh select vm "${_suite}" "" "${_grouping}"
+			)"
+			jq -e '
+				type == "array" and length > 0 and
+				all(.[];
+					(.name | type == "string" and length > 0) and
+					(.targets | type == "array" and length > 0) and
+					all(.targets[]; type == "string" and length > 0) and
+					(.timeout_minutes | type == "number" and . > 0 and . <= 10)
+				) and
+				((map(.targets[]) | length) == (map(.targets[]) | unique | length))
+			' <<<"${_selection}" >/dev/null
+		done
+	done
+
+	for _grouping in isolated bundled; do
+		_selection="$(
+			bash tests/manifest.sh select vm smoke \
+				kernel-capability-smoke,fuse-copy-file-range,new-mount-api-deny "${_grouping}"
+		)"
 		jq -e '
-			type == "array" and length > 0 and
-			all(.[];
-				(.name | type == "string" and length > 0) and
-				(.timeout_minutes | type == "number" and . > 0 and . <= 10)
-			)
-		' <<<"${_selection}" >/dev/null
+			if $grouping == "bundled" then
+				type == "array" and length == 1 and
+				.[0].targets == [
+					"fuse-copy-file-range",
+					"kernel-capability-smoke",
+					"new-mount-api-deny"
+				]
+			else
+				type == "array" and length == 3 and
+				all(.[]; (.targets | length) == 1)
+			end
+		' --arg grouping "${_grouping}" <<<"${_selection}" >/dev/null
 	done
 }
 

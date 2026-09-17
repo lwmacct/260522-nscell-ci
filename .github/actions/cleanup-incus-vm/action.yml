@@ -3,7 +3,7 @@ description: Collect guest diagnostics and remove the disposable VM, image, and 
 
 inputs:
   test_target:
-    description: Concrete workload name used to derive VM and share paths
+    description: Concrete workload or workload group name used to derive VM and share paths
     required: true
   log_dir:
     description: Host directory receiving VM diagnostics

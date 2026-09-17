@@ -90,7 +90,58 @@ Measurements:
 The smoke BusyBox pull remains live, preserving real image-pull and extraction
 coverage.
 
-## Phase 3: slow-path workload review
+## Phase 3: bundled lightweight VM workloads
+
+Status: **complete in this change**
+
+The September 17, 2026 gate run
+[35182571223](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35182571223)
+spent 62m53s across 24 VM test jobs, but only 24m31s in workload steps. The
+remaining 38m22s was dominated by repeated Incus installation, VM image
+pulling, and VM boot.
+
+This phase adds manifest-driven VM groups without weakening the isolation of
+workloads that intentionally mutate daemon state:
+
+- Add the `light` VM group for `kernel-capability-smoke`,
+  `resource-limits`, `oci-lifecycle`, `oci-mount-semantics`,
+  `shared-netns-lifecycle`, `procfs-memory`, `storage-lifecycle`,
+  `fuse-copy-file-range`, and `seccomp-notify-concurrency`.
+- Add `grouping=isolated|bundled` to the reusable VM workflow.
+- Make `Test release` default to bundled grouping and bundle its three explicit
+  Linux 6.18 floor targets into one floor VM.
+- Keep manual `Test workloads in VM` runs isolated by default, preserving the
+  existing focused-debug workflow.
+- Let bundled parallel workloads continue after a sibling assertion failure so
+  one target failure does not hide the status of the other targets.
+- Export per-workload logs from `/data/nscell/runs/*/logs` into the VM
+  diagnostics artifact.
+
+Daemon-mutating tests, Docker-in-Docker, Kubernetes, and systemd remain in
+their own VMs. The expected standard-gate matrix falls from 21 VMs to 13 VMs;
+including the Linux floor, a release gate falls from 24 VMs to 14. Based on the
+three successful September 17 isolated runs, grouping was expected to save
+roughly 20 minutes of cumulative runner time per gate. The measured result is
+recorded below. Gate wall time remains bounded by Docker-in-Docker until
+slow-path review.
+
+Validation:
+
+- Static checks, bundled standard smoke, and the bundled Linux-floor smoke
+  passed in
+  [check run 35185196699](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35185196699).
+- The complete bundled release gate passed in
+  [test run 35185454344](https://github.com/lwmacct/260522-nscell-ci/actions/runs/35185454344).
+  All nine targets in the standard `light` group and all three Linux-floor
+  targets passed in their shared VMs.
+- The bundled run used 14 VM test jobs and 40m33s of cumulative VM job time.
+  Isolated baseline 35182571223 used 24 VM test jobs and 62m53s, reducing
+  cumulative VM job time by 22m20s (35.4%). Wall time fell from 5m14s to
+  4m32s and remains bounded by Docker-in-Docker.
+- The grouped diagnostics artifacts include each per-workload log under
+  `run-logs/`, preserving target-level failure attribution.
+
+## Phase 4: slow-path workload review
 
 Status: **not started**
 

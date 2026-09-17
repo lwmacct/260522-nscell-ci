@@ -139,6 +139,7 @@ jobs:
       image_ref: ghcr.io/lwmacct/260522-nscell-ci:artifact-images-standard
       nscell_image: ${{ needs.changes.outputs.nscell_image }}
       suite: smoke
+      grouping: bundled
     secrets: inherit
 
   vm-floor-smoke:
@@ -153,4 +154,5 @@ jobs:
       nscell_image: ${{ needs.changes.outputs.nscell_image }}
       suite: smoke
       targets: kernel-capability-smoke,fuse-copy-file-range,new-mount-api-deny
+      grouping: bundled
     secrets: inherit

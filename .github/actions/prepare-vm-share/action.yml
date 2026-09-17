@@ -6,7 +6,7 @@ inputs:
     description: Path to the checked-out CI repository
     required: true
   test_target:
-    description: Concrete workload name used to derive the isolated share path
+    description: Concrete workload or workload group name used to derive the isolated share path
     required: true
 
 outputs:

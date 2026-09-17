@@ -48,6 +48,13 @@ __collect_guest_logs() {
     "${_log_dir}/nscell-runtime-invocations.log" 2>/dev/null || true
   sudo incus file pull "${_vm_name}/var/log/nscell-runtime.log" \
     "${_log_dir}/nscell-runtime.log" 2>/dev/null || true
+  if sudo incus exec "${_vm_name}" -- test -d /data/nscell/runs >/dev/null 2>&1; then
+    install -d -m 0755 "${_log_dir}/run-logs"
+    sudo incus exec "${_vm_name}" -- bash -c '
+      find /data/nscell/runs -type f -path "*/logs/*" -printf "%P\\0" |
+        tar --null -C /data/nscell/runs --files-from - -cf -
+    ' | tar -xf - -C "${_log_dir}/run-logs"
+  fi
 }
 
 __main() {

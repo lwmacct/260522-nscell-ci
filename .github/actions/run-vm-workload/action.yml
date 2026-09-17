@@ -1,12 +1,15 @@
 name: Run VM workload
-description: Configure NSCell in one VM and execute one workload in the guest
+description: Configure NSCell in one VM and execute one workload or workload group in the guest
 
 inputs:
   vm_name:
     description: Name of the running Incus VM
     required: true
   test_target:
-    description: Concrete workload name, or smoke
+    description: Concrete workload name, workload group name, or smoke
+    required: true
+  test_targets_json:
+    description: JSON array of concrete targets to execute in this VM
     required: true
   nscell_image:
     description: Exact OCI image containing the NSCell binary
@@ -27,6 +30,7 @@ runs:
       env:
         VM_NAME: ${{ inputs.vm_name }}
         TEST_TARGET: ${{ inputs.test_target }}
+        TEST_TARGETS_JSON: ${{ inputs.test_targets_json }}
         NSCELL_IMAGE: ${{ inputs.nscell_image }}
         REGISTRY_USERNAME: ${{ inputs.registry_username }}
         REGISTRY_TOKEN: ${{ inputs.registry_token }}

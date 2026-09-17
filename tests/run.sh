@@ -26,6 +26,9 @@ usage: scripts/ci.sh run-workloads [workload...]
   scripts/ci.sh run-workloads docker-in-docker procfs-cpu
                          run selected workload tests concurrently
 
+Set NSCELL_WORKLOAD_FAIL_FAST=0 to let every selected workload finish before
+returning the first failure.
+
 available workloads:
 EOF
   for _workload in $(__workload_names); do
@@ -129,6 +132,15 @@ __run_parallel_tests() {
   local -A _pid_workloads=()
   local _workload _workload_id _pid _status _done_pid _remaining _failed=0
   local _index=0
+  local _fail_fast="${NSCELL_WORKLOAD_FAIL_FAST:-1}"
+
+  case "${_fail_fast}" in
+  0 | 1) ;;
+  *)
+    echo "NSCELL_WORKLOAD_FAIL_FAST must be 0 or 1" >&2
+    return 2
+    ;;
+  esac
 
   if ((${#_workloads[@]} == 0)); then
     mapfile -t _workloads < <(__workload_names)
@@ -194,8 +206,10 @@ __run_parallel_tests() {
     _failed=1
     __log "${_workload} workload test failed with ${_status}"
     cat "${_log_dir}/${_workload}.log" >&2 || true
-    __terminate_parallel_workloads _pid_workloads
-    exit 1
+    if ((_fail_fast)); then
+      __terminate_parallel_workloads _pid_workloads
+      exit 1
+    fi
   done
 
   if ((_failed != 0)); then

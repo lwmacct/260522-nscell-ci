@@ -4,11 +4,15 @@ set -euo pipefail
 
 _vm_name="${VM_NAME:?VM_NAME is required}"
 _test_target="${TEST_TARGET:?TEST_TARGET is required}"
+_test_targets_json="${TEST_TARGETS_JSON:?TEST_TARGETS_JSON is required}"
 _nscell_image="${NSCELL_IMAGE:?NSCELL_IMAGE is required}"
 _registry_username="${REGISTRY_USERNAME:?REGISTRY_USERNAME is required}"
 _registry_token="${REGISTRY_TOKEN:-}"
+declare -a _test_targets=()
 
 __main() {
+  local _target
+
   if [[ "${_test_target}" != smoke &&
     ! "${_test_target}" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
     echo "invalid VM test target: ${_test_target}" >&2
@@ -18,10 +22,32 @@ __main() {
     echo "run-vm-workload accepts one concrete workload, not all" >&2
     return 2
   fi
+  if ! jq -e '
+    type == "array" and
+    length > 0 and
+    all(.[]; type == "string" and test("^[a-z0-9][a-z0-9-]*$")) and
+    (unique | length) == length
+  ' <<<"${_test_targets_json}" >/dev/null; then
+    echo "invalid VM test target array: ${_test_targets_json}" >&2
+    return 2
+  fi
+  mapfile -t _test_targets < <(jq -r '.[]' <<<"${_test_targets_json}")
+  if [[ "${_test_target}" == smoke ]] &&
+    { ((${#_test_targets[@]} != 1)) || [[ "${_test_targets[0]}" != smoke ]]; }; then
+    echo "the smoke target must run alone" >&2
+    return 2
+  fi
+  for _target in "${_test_targets[@]}"; do
+    if [[ "${_target}" == all ]]; then
+      echo "run-vm-workload accepts concrete workloads, not all" >&2
+      return 2
+    fi
+  done
 
 sudo incus exec "${_vm_name}" -- \
   env \
   NSCELL_TEST_TARGET="${_test_target}" \
+  NSCELL_TEST_TARGETS_JSON="${_test_targets_json}" \
   NSCELL_IMAGE="${_nscell_image}" \
   NSCELL_REGISTRY_USERNAME="${_registry_username}" \
     NSCELL_REGISTRY_TOKEN="${_registry_token}" \
@@ -29,7 +55,10 @@ sudo incus exec "${_vm_name}" -- \
 set -euo pipefail
 
 _test_target="${NSCELL_TEST_TARGET}"
+_test_targets_json="${NSCELL_TEST_TARGETS_JSON}"
 _nscell_image="${NSCELL_IMAGE}"
+declare -a _test_targets=()
+mapfile -t _test_targets < <(jq -r '.[]' <<<"${_test_targets_json}")
 
 __retry() {
   local _max_attempts="$1"
@@ -72,6 +101,7 @@ cd /opt/nscell-ci
 export NSCELL_IMAGE="${_nscell_image}"
 export NSCELL_IMAGE_PLATFORM=linux/amd64
 export NSCELL_CI_TEST_ROOT=/data/nscell
+export NSCELL_CI_IMAGE_CACHE_DIR=/data/nscell/images
 bash scripts/ci.sh setup-runtime-host
 bash scripts/ci.sh verify-gate
 
@@ -83,7 +113,12 @@ smoke)
   ;;
 *)
   bash scripts/ci.sh show-host-capabilities
-  bash scripts/ci.sh run-workload "${_test_target}"
+  if ((${#_test_targets[@]} == 1)); then
+    bash scripts/ci.sh run-workload "${_test_targets[0]}"
+  else
+    export NSCELL_WORKLOAD_FAIL_FAST=0
+    bash tests/run.sh parallel "${_test_targets[@]}"
+  fi
   bash scripts/ci.sh collect-logs || true
   ;;
 esac

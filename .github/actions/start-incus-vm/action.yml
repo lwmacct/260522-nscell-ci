@@ -9,7 +9,7 @@ inputs:
     description: Host directory exposed to the guest at /opt/nscell-ci
     required: true
   test_target:
-    description: Concrete workload name used to derive the VM name
+    description: Concrete workload or workload group name used to derive the VM name
     required: true
   vm_cpu:
     description: Number of virtual CPUs

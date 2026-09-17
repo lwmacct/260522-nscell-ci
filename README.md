@@ -19,9 +19,12 @@ gate check, diagnostics, and workload flow live in this repository under
 
 All runtime workloads are stored in `tests/workloads/`. `tests/manifest.json`
 is the single catalog for VM availability, the `smoke`, `gate`, and `full`
-suites, and target timeouts. Each selected target gets its own runner, VM,
-services, logs, and artifact. A manual run can use `targets` to override its
-selected suite and isolate one or more workloads.
+suites, target timeouts, and compatible VM target groups. The release gate uses
+bundled grouping: targets marked with the same group share one runner, VM,
+runtime installation, and diagnostics artifact, while daemon-mutating and heavy
+workloads remain isolated. Manual `Test workloads in VM` runs default to one
+target per VM; selecting explicit `targets` keeps that isolated debugging
+behavior unless `grouping=bundled` is explicitly requested.
 
 Runtime host setup starts from a clean daemon state by default. Storage crash
 recovery tests decode the checksummed `/var/lib/nscell/state/events.log`
