@@ -12,15 +12,11 @@ cd "$_repo_root"
 source "${_workload_dir}/library/env.sh"
 
 __require_kernel_floor() {
-  local _profile _release _version_floor
+  local _release _version_floor
 
   _release="$(uname -r)"
   _version_floor="$(printf '%s\n%s\n' '7.0.0' "${_release%%-*}" | sort -V | head -1)"
   [[ "${_version_floor}" == '7.0.0' ]]
-  _profile="$(cat /etc/test-vm-profile 2>/dev/null || true)"
-  if [[ "${_profile}" == *"IMAGE_PROFILE=linux-7-0"* ]]; then
-    [[ "${_release}" =~ ^7\.0\.0-[0-9]+-generic$ ]]
-  fi
 }
 
 __require_cgroup_v2() {
