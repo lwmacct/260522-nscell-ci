@@ -36,6 +36,10 @@ while offset < len(data):
     event = json.loads(payload)
     sequence += 1
     if event.get("version") != 1 or event.get("sequence") != sequence:
+        print(
+            f"state event mismatch at record {sequence}: {event!r}",
+            file=sys.stderr,
+        )
         raise SystemExit("state event log sequence mismatch")
     kind = event.get("kind")
     subject = event.get("subject")
