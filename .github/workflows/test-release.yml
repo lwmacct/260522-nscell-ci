@@ -1,5 +1,5 @@
 name: Test release
-run-name: Release gate / ${{ inputs.vm_grouping }} / ${{ inputs.nscell_image }}
+run-name: Release ${{ inputs.vm_suite }} / ${{ inputs.vm_targets || 'manifest' }} / ${{ inputs.vm_grouping }} / ${{ inputs.nscell_image }}
 
 on:
   workflow_dispatch:
@@ -22,6 +22,11 @@ on:
           - smoke
           - gate
           - full
+      vm_targets:
+        description: Optional space-separated targets overriding the suite
+        required: false
+        default: ""
+        type: string
       vm_grouping:
         description: Bundle compatible targets in one VM or keep every target isolated
         required: true
@@ -36,17 +41,33 @@ permissions:
   packages: read
 
 concurrency:
-  group: test-release-${{ github.ref }}-${{ inputs.nscell_image }}-${{ inputs.vm_suite }}-${{ inputs.vm_grouping }}
+  group: test-release-${{ github.ref }}-${{ inputs.nscell_image }}-${{ inputs.vm_suite }}-${{ inputs.vm_targets || 'manifest' }}-${{ inputs.vm_grouping }}
   cancel-in-progress: true
 
 jobs:
+  preflight:
+    name: Runtime preflight
+    if: inputs.vm_targets == '' && (inputs.vm_suite == 'gate' || inputs.vm_suite == 'full')
+    uses: ./.github/workflows/test-vm.yml
+    with:
+      image_name: standard
+      image_ref: ${{ inputs.vm_image_ref }}
+      nscell_image: ${{ inputs.nscell_image }}
+      suite: smoke
+      targets: smoke
+      grouping: isolated
+    secrets: inherit
+
   vm:
     name: VM ${{ inputs.vm_suite }}
+    needs: preflight
+    if: inputs.vm_targets != '' || (inputs.vm_suite != 'gate' && inputs.vm_suite != 'full') || needs.preflight.result == 'success'
     uses: ./.github/workflows/test-vm.yml
     with:
       image_name: standard
       image_ref: ${{ inputs.vm_image_ref }}
       nscell_image: ${{ inputs.nscell_image }}
       suite: ${{ inputs.vm_suite }}
+      targets: ${{ inputs.vm_targets != '' && inputs.vm_targets || (inputs.vm_suite == 'smoke' && 'smoke' || '') }}
       grouping: ${{ inputs.vm_grouping }}
     secrets: inherit

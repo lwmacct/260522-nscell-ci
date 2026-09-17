@@ -37,11 +37,13 @@ The expensive Ubuntu 26.04 systemd environment is published separately as
 remain under `tests/workloads/systemd-pid1/` and are injected at test time, so
 the published image contains no workload assertions.
 
-`Test release` is the product-facing `workflow_dispatch` entry point. It calls
-the reusable VM workflow, so every release gate uses one CI commit and has one
-final conclusion. `Test workloads in VM` remains manually dispatchable for
-focused runs and debugging. Runs, billing, matrix jobs, logs, and artifacts
-remain in this public repository. The test runner fetches the selected
+`Test release` is the product-facing `workflow_dispatch` entry point and
+defaults to the full `gate` suite. Before `gate` or `full` expands, it runs one
+concrete `smoke` VM; choosing `smoke` for an investigation loop uses that same
+single VM. Explicit targets bypass both the suite matrix and preflight. `Test
+workloads in VM` remains manually dispatchable for focused runs and debugging.
+Runs, billing, matrix jobs, logs, and artifacts remain in this public
+repository. The test runner fetches the selected
 linux/amd64 image manifest and layers, extracts `/usr/local/bin/nscell`, then
 installs the binary and the
 `nscell-daemon.service` systemd unit.
