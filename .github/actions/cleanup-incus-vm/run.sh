@@ -10,11 +10,29 @@ _resource_id="run-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}-${_resource_h
 _vm_name="${NSCELL_VM_NAME:-test-vm-${_resource_id}}"
 _image_alias="${_vm_name}-image"
 _share_dir="${RUNNER_TEMP:-/tmp}/test-vm-share-${_resource_id}"
+_exec_timeout="${NSCELL_CLEANUP_EXEC_TIMEOUT:-45s}"
+_pull_timeout="${NSCELL_CLEANUP_PULL_TIMEOUT:-15s}"
+_delete_timeout="${NSCELL_CLEANUP_DELETE_TIMEOUT:-30s}"
+
+__bounded() {
+  local _duration="$1"
+  shift
+
+  timeout --signal=TERM --kill-after=5s "${_duration}" "$@"
+}
+
+__pull_guest_file() {
+  local _guest_path="$1"
+  local _host_path="$2"
+
+  __bounded "${_pull_timeout}" sudo incus file pull \
+    "${_vm_name}${_guest_path}" "${_host_path}" 2>/dev/null || true
+}
 
 __collect_guest_logs() {
   mkdir -p "${_log_dir}"
   # shellcheck disable=SC2024 # The runner user owns the diagnostics destination.
-  sudo incus exec "${_vm_name}" -- bash -euo pipefail -c '
+  __bounded "${_exec_timeout}" sudo incus exec "${_vm_name}" -- bash -euo pipefail -c '
     {
       uname -a
       cat /etc/test-vm-profile || true
@@ -42,31 +60,29 @@ __collect_guest_logs() {
     } 2>&1
     test -f /var/log/nscell-daemon.log && cat /var/log/nscell-daemon.log || true
   ' >"${_log_dir}/guest-diagnostics.log" 2>&1 || true
-  sudo incus file pull "${_vm_name}/var/log/nscell-daemon.log" \
-    "${_log_dir}/nscell-daemon.log" 2>/dev/null || true
-  sudo incus file pull "${_vm_name}/var/log/nscell-runtime-invocations.log" \
-    "${_log_dir}/nscell-runtime-invocations.log" 2>/dev/null || true
-  sudo incus file pull "${_vm_name}/var/log/nscell-runtime.log" \
-    "${_log_dir}/nscell-runtime.log" 2>/dev/null || true
-  sudo incus file pull "${_vm_name}/var/lib/nscell/state/events.log" \
-    "${_log_dir}/nscell-state-events.log" 2>/dev/null || true
+  __pull_guest_file /var/log/nscell-daemon.log "${_log_dir}/nscell-daemon.log"
+  __pull_guest_file /var/log/nscell-runtime-invocations.log \
+    "${_log_dir}/nscell-runtime-invocations.log"
+  __pull_guest_file /var/log/nscell-runtime.log "${_log_dir}/nscell-runtime.log"
+  __pull_guest_file /var/lib/nscell/state/events.log "${_log_dir}/nscell-state-events.log"
   if [[ -f "${_log_dir}/nscell-state-events.log" ]]; then
     sudo chown "$(id -u):$(id -g)" "${_log_dir}/nscell-state-events.log"
     chmod 0644 "${_log_dir}/nscell-state-events.log"
   fi
-  if sudo incus exec "${_vm_name}" -- test -d /data/nscell/runs >/dev/null 2>&1; then
+  if __bounded "${_pull_timeout}" sudo incus exec "${_vm_name}" -- \
+    test -d /data/nscell/runs >/dev/null 2>&1; then
     install -d -m 0755 "${_log_dir}/run-logs"
-    sudo incus exec "${_vm_name}" -- bash -c '
+    __bounded "${_exec_timeout}" sudo incus exec "${_vm_name}" -- bash -c '
       find /data/nscell/runs -type f -path "*/logs/*" -printf "%P\\0" |
         tar --null -C /data/nscell/runs --files-from - -cf -
-    ' | tar -xf - -C "${_log_dir}/run-logs"
+    ' | __bounded "${_exec_timeout}" tar -xf - -C "${_log_dir}/run-logs" || true
   fi
 }
 
 __main() {
   __collect_guest_logs
-  sudo incus delete --force "${_vm_name}" 2>/dev/null || true
-  sudo incus image delete "${_image_alias}" 2>/dev/null || true
+  __bounded "${_delete_timeout}" sudo incus delete --force "${_vm_name}" 2>/dev/null || true
+  __bounded "${_delete_timeout}" sudo incus image delete "${_image_alias}" 2>/dev/null || true
   rm -rf "${_share_dir}"
 }
 
