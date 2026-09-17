@@ -61,7 +61,7 @@ jobs:
   vm:
     name: VM ${{ inputs.vm_suite }}
     needs: preflight
-    if: inputs.vm_targets != '' || (inputs.vm_suite != 'gate' && inputs.vm_suite != 'full') || needs.preflight.result == 'success'
+    if: always() && !failure() && (inputs.vm_targets != '' || (inputs.vm_suite != 'gate' && inputs.vm_suite != 'full') || needs.preflight.result == 'success')
     uses: ./.github/workflows/test-vm.yml
     with:
       image_name: standard
