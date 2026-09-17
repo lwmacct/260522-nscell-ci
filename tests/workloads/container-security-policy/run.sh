@@ -287,11 +287,31 @@ __assert_no_bpf_task_audit() {
 
 __container_cgroup_path() {
   local _name="$1"
-  local _pid _rel
+  local _pid _rel _candidate _match
+  local -a _matches=()
 
   _pid="$(docker inspect "$_name" --format '{{.State.Pid}}')"
   _rel="$(awk -F: '$1 == "0" { print $3; exit }' "/proc/${_pid}/cgroup")"
-  printf '/sys/fs/cgroup%s\n' "$_rel"
+  _candidate="/sys/fs/cgroup${_rel}"
+  if [[ -f "${_candidate}/cgroup.procs" ]] &&
+    grep -Fxq -- "$_pid" "${_candidate}/cgroup.procs"; then
+    printf '%s\n' "$_candidate"
+    return
+  fi
+
+  while IFS= read -r _match; do
+    _matches+=("${_match%/cgroup.procs}")
+  done < <(
+    find /sys/fs/cgroup -type f -name cgroup.procs \
+      -exec grep -lFx -- "$_pid" {} + 2>/dev/null
+  )
+  if ((${#_matches[@]} != 1)); then
+    echo "unable to resolve unique cgroup for ${_name} pid=${_pid} proc-path=${_rel}" >&2
+    printf 'matching cgroups: %s\n' "${_matches[*]:-none}" >&2
+    findmnt -T /sys/fs/cgroup >&2 || true
+    return 1
+  fi
+  printf '%s\n' "${_matches[0]}"
 }
 
 __run_task_op_from_cgroup() {
@@ -538,9 +558,19 @@ __check_host_task_gate_exemption() {
   __cleanup
 }
 
-__check_host_target_task_gate() {
+__check_host_target_task_gate() (
   local _name="${_container_security_policy_name}-host-target"
-  local _source_cgroup _log_start _host_pid
+  local _source_cgroup _log_start
+  local _host_pid=""
+
+  __cleanup() {
+    if [[ -n "$_host_pid" ]]; then
+      kill "$_host_pid" 2>/dev/null || true
+      wait "$_host_pid" 2>/dev/null || true
+    fi
+    docker rm -f "$_name" >/dev/null 2>&1 || true
+  }
+  trap __cleanup EXIT
 
   __log "checking NSCell container task gate against host target"
   docker rm -f "$_name" >/dev/null 2>&1 || true
@@ -557,11 +587,6 @@ __check_host_target_task_gate() {
   _source_cgroup="$(__container_cgroup_path "$_name")"
   sleep 3600 &
   _host_pid="$!"
-  __cleanup() {
-    kill "$_host_pid" 2>/dev/null || true
-    wait "$_host_pid" 2>/dev/null || true
-    docker rm -f "$_name" >/dev/null 2>&1 || true
-  }
 
   _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
   __expect_task_op_denied "$_source_cgroup" "$_host_pid" signal
@@ -570,22 +595,26 @@ __check_host_target_task_gate() {
   __expect_task_op_denied "$_source_cgroup" "$_host_pid" ptrace
   __assert_bpf_task_audit "$_log_start" ptrace host-target
   __cleanup
-}
+  trap - EXIT
+)
 
-__check_cross_container_task_gate() {
+__check_cross_container_task_gate() (
   local _name_a="${_container_security_policy_name}-task-a"
   local _name_b="${_container_security_policy_name}-task-b"
-  local _source_cgroup _target_cgroup _log_start _target_pid
+  local _source_cgroup _target_cgroup _log_start
+  local _target_pid=""
 
-  __log "checking NSCell cross-container task gate"
-  docker rm -f "$_name_a" "$_name_b" >/dev/null 2>&1 || true
   __cleanup() {
-    if [[ -n "${_target_pid:-}" ]]; then
+    if [[ -n "$_target_pid" ]]; then
       kill "$_target_pid" 2>/dev/null || true
       wait "$_target_pid" 2>/dev/null || true
     fi
     docker rm -f "$_name_a" "$_name_b" >/dev/null 2>&1 || true
   }
+  trap __cleanup EXIT
+
+  __log "checking NSCell cross-container task gate"
+  docker rm -f "$_name_a" "$_name_b" >/dev/null 2>&1 || true
   for _name in "$_name_a" "$_name_b"; do
     docker run -d \
       --name "$_name" \
@@ -609,7 +638,8 @@ __check_cross_container_task_gate() {
   __expect_task_op_denied "$_source_cgroup" "$_target_pid" ptrace
   __assert_bpf_task_audit "$_log_start" ptrace cross-container
   __cleanup
-}
+  trap - EXIT
+)
 
 __check_proc_sys() {
   local _name="$1"
