@@ -294,7 +294,7 @@ jobs:
       - name: Setup Incus for Python image cache
         if: matrix.image == 'standard'
         id: incus
-        uses: ./.github/actions/incus-setup
+        uses: ./.github/actions/incus-vm-setup
 
       - name: Warm Python image cache
         if: matrix.image == 'standard'
