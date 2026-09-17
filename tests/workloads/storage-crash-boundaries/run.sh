@@ -216,6 +216,10 @@ __assert_sync_in_recovery() {
   _create_pid=$!
   __wait_for_crash_trigger "$_daemon_pid" "sync-in:${_storage_crash_sync_in_id}"
   sudo kill -KILL "$_daemon_pid"
+  # The service manager can start recovery while the asynchronous OCI create
+  # client is still unwinding. Keep the crashed epoch quiescent so the on-disk
+  # event log below is not compacted or replayed during inspection.
+  sudo systemctl stop nscell-daemon.service >/dev/null 2>&1 || true
   __assert_daemon_was_killed "$_daemon_pid" "sync-in:${_storage_crash_sync_in_id}"
   wait "$_create_pid" || _create_status=$?
   if ((_create_status == 0)); then
@@ -276,6 +280,7 @@ __assert_sync_out_recovery() {
   _delete_pid=$!
   __wait_for_crash_trigger "$_daemon_pid" "sync-out:${_storage_crash_sync_out_id}"
   sudo kill -KILL "$_daemon_pid"
+  sudo systemctl stop nscell-daemon.service >/dev/null 2>&1 || true
   __assert_daemon_was_killed "$_daemon_pid" "sync-out:${_storage_crash_sync_out_id}"
   wait "$_delete_pid" || _delete_status=$?
   if ((_delete_status == 124)); then
