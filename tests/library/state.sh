@@ -35,7 +35,7 @@ while offset < len(data):
         raise SystemExit("state event log checksum mismatch")
     event = json.loads(payload)
     sequence += 1
-    if event.get("version") != 1 or event.get("sequence") != sequence:
+    if event.get("version") != 2 or event.get("sequence") != sequence:
         print(
             f"state event mismatch at record {sequence}: {event!r}",
             file=sys.stderr,
