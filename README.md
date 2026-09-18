@@ -55,3 +55,5 @@ The dedicated Ubuntu VM image and its nested Incus validation workflows are
 documented in [`docs/nscell-vm.md`](docs/nscell-vm.md).
 Runtime workflow inputs, target coverage, and disposable-runner environment
 variables are documented in [`docs/runtime-tests.md`](docs/runtime-tests.md).
+Failed workflow, readiness, and workload triage steps are documented in
+[`docs/troubleshooting.md`](docs/troubleshooting.md).
