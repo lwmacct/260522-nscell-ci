@@ -14,7 +14,8 @@ __cleanup() {
 }
 
 __write_bundle() {
-  _bundle="$(mktemp -d /tmp/nscell-thermal-mask.XXXXXX)"
+  mkdir -p /var/lib/docker/overlay2
+  _bundle="$(mktemp -d /var/lib/docker/overlay2/nscell-thermal-mask.XXXXXX)"
   _runc_root="/run/nscell-runc-thermal-mask-$$"
   trap __cleanup EXIT HUP INT TERM
 
