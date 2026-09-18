@@ -147,7 +147,7 @@ __perf_open_callers() {
 			next
 		}
 		/openat|openFileNolog|hostFileCache/ { _saw_open = 1 }
-		/internal\/[a-z]+\// && _caller == "" { _caller = $NF }
+		/internal\/[a-z]+\// && _caller == "" { _caller = $(NF - 1) }
 		END {
 			if (_saw_open && _caller != "") { _counts[_caller]++ }
 			for (_name in _counts) { printf "%d %s\n", _counts[_name], _name }
