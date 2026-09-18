@@ -6,7 +6,10 @@ set -euo pipefail
 _workload_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _workload_dir="$(cd "${_workload_path}/../.." && pwd)"
 _repo_root="$(cd "${_workload_dir}/.." && pwd)"
-_probe_tmp=""
+_disabled_probe_tmp=""
+_enabled_probe_tmp=""
+_fuse_enable_path="/sys/module/fuse/parameters/enable_uring"
+_restore_enable_value=""
 
 cd "$_repo_root"
 
@@ -14,8 +17,29 @@ source "${_workload_dir}/library/env.sh"
 source "${_workload_dir}/library/readiness.sh"
 
 __cleanup() {
-	if [[ -n "$_probe_tmp" ]]; then
-		rm -f -- "$_probe_tmp"
+	local _path
+
+	if [[ -n "$_restore_enable_value" ]]; then
+		printf '%s\n' "$_restore_enable_value" | sudo tee "$_fuse_enable_path" >/dev/null || true
+		_restore_enable_value=""
+	fi
+	for _path in "$_disabled_probe_tmp" "$_enabled_probe_tmp"; do
+		if [[ -n "$_path" ]]; then
+			rm -f -- "$_path"
+		fi
+	done
+}
+
+__set_fuse_io_uring() {
+	local _value="$1"
+
+	printf '%s\n' "$_value" | sudo tee "$_fuse_enable_path" >/dev/null
+}
+
+__restore_fuse_io_uring() {
+	if [[ -n "$_restore_enable_value" ]]; then
+		__set_fuse_io_uring "$_restore_enable_value"
+		_restore_enable_value=""
 	fi
 }
 
@@ -53,12 +77,14 @@ __assert_inventory() {
 	local _enable_value="$2"
 	local _disabled_value="$3"
 	local _release="$4"
+	local _expected_probe="$5"
 
 	jq -e \
 		--arg _config "$_config_value" \
 		--arg _enable "$_enable_value" \
 		--arg _disabled "$_disabled_value" \
-		--arg _release "$_release" '
+		--arg _release "$_release" \
+		--arg _expected_probe "$_expected_probe" '
       .kernelRelease == $_release and
       .configFuseIOUring == $_config and
       .fuseEnableUring == $_enable and
@@ -74,6 +100,7 @@ __assert_inventory() {
       (.abi.cqe32 | type == "boolean") and
       (.abi.featureBits | type == "number") and
       (.transportProbe | IN("unsupported", "failed", "passed")) and
+      .transportProbe == $_expected_probe and
       .transport.status == .transportProbe and
       (if .transportProbe == "passed" then
          .transportReady == true and
@@ -112,7 +139,7 @@ __assert_inventory() {
 
 __main() {
 	local _config_value _daemon_fds_before _daemon_pid _disabled_value
-	local _enable_value _mounts_before _release
+	local _enabled_value _mounts_before _original_enable_value _release
 
 	if [[ "${1:-}" == "cleanup" ]]; then
 		__cleanup
@@ -136,14 +163,54 @@ __main() {
 
 	_release="$(uname -r)"
 	_config_value="$(__kernel_config_value)"
-	_enable_value="$(__kernel_value /sys/module/fuse/parameters/enable_uring)"
+	_original_enable_value="$(__kernel_value "$_fuse_enable_path")"
 	_disabled_value="$(__kernel_value /proc/sys/kernel/io_uring_disabled)"
-	_probe_tmp="$(mktemp)"
+	_disabled_probe_tmp="$(mktemp)"
+	_enabled_probe_tmp="$(mktemp)"
 
-	__log "recording the FUSE io_uring ABI and resource baseline"
-	timeout 20s sudo nscell daemon host io-uring | tee "$_probe_tmp"
-	__assert_inventory "$_config_value" "$_enable_value" "$_disabled_value" "$_release"
-	sudo install -m 0644 "$_probe_tmp" "${_log_root}/fuse-io-uring-probe.json"
+	if [[ "${_original_enable_value,,}" != n ]]; then
+		echo "standard VM must start with fuse.enable_uring=N, got ${_original_enable_value}" >&2
+		return 1
+	fi
+	if [[ "$_config_value" != y || "$_disabled_value" != 0 ]]; then
+		echo "standard VM cannot run the enabled FUSE io_uring probe" >&2
+		return 1
+	fi
+	if ! sudo test -w "$_fuse_enable_path"; then
+		echo "FUSE io_uring module parameter is not writable in the disposable VM" >&2
+		return 1
+	fi
+
+	__log "validating the disabled FUSE io_uring baseline"
+	timeout 20s sudo nscell daemon host io-uring | tee "$_disabled_probe_tmp"
+	__assert_inventory \
+		"$_config_value" "$_original_enable_value" "$_disabled_value" "$_release" unsupported
+	sudo install -m 0644 \
+		"$_disabled_probe_tmp" "${_log_root}/fuse-io-uring-probe-disabled.json"
+
+	__log "enabling FUSE io_uring inside the disposable VM"
+	_restore_enable_value="$_original_enable_value"
+	__set_fuse_io_uring Y
+	_enabled_value="$(__kernel_value "$_fuse_enable_path")"
+	if [[ "${_enabled_value,,}" != y ]]; then
+		echo "failed to enable FUSE io_uring in the disposable VM" >&2
+		return 1
+	fi
+
+	__log "validating the enabled FUSE io_uring transport"
+	timeout 20s sudo nscell daemon host io-uring | tee "$_enabled_probe_tmp"
+	__assert_inventory \
+		"$_config_value" "$_enabled_value" "$_disabled_value" "$_release" passed
+	sudo install -m 0644 \
+		"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-probe.json"
+	sudo install -m 0644 \
+		"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-probe-enabled.json"
+
+	__restore_fuse_io_uring
+	if [[ "$(__kernel_value "$_fuse_enable_path")" != "$_original_enable_value" ]]; then
+		echo "failed to restore the FUSE io_uring module parameter" >&2
+		return 1
+	fi
 
 	if [[ "$(systemctl show --property MainPID --value nscell-daemon.service)" != "$_daemon_pid" ]]; then
 		echo "io_uring inventory restarted the nscell daemon" >&2

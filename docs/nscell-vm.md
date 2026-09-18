@@ -18,6 +18,12 @@ BPF LSM. It does not contain an NSCell binary; each disposable guest accepts an
 exact public NSCell OCI image reference, fetches its AMD64 layers with ORAS,
 and installs the extracted binary without guest registry credentials.
 
+The standard image keeps `fuse.enable_uring` at its kernel default of `N`. The
+full-suite-only `fuse-io-uring-probe` workload first validates that disabled
+baseline, then explicitly enables the parameter only inside its isolated guest,
+runs the bounded transport probe, and restores the original value. The outer
+runner and production transport are never changed.
+
 The profiles intentionally omit a guest compiler toolchain. Runtime workloads
 must not depend on building probes inside the guest; the staged plan for a
 the measured Python image preset is tracked in
