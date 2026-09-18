@@ -42,7 +42,7 @@ __collect_guest_logs() {
     chmod 0644 "${_log_dir}/nscell-state-events.log"
   fi
 
-  # shellcheck disable=SC2024 # The runner user owns the diagnostics destination.
+  # shellcheck disable=SC2016,SC2024 # The quoted script expands inside the guest.
   __bounded "${_exec_timeout}" sudo incus exec "${_vm_name}" -- bash -euo pipefail -c '
     __guest_bounded() {
       timeout --signal=TERM --kill-after=2s \
