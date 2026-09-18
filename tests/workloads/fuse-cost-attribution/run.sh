@@ -14,8 +14,8 @@ source "${_workload_dir}/library/readiness.sh"
 source "${_workload_dir}/library/images.sh"
 
 _metrics_url="http://127.0.0.1:9618/metrics"
-_read_rounds=200
-_perf_seconds=12
+_read_rounds="${_fuse_cost_read_rounds}"
+_perf_seconds=35
 
 __cleanup() {
 	docker rm -f "$_fuse_cost_attribution_name" >/dev/null 2>&1 || true
