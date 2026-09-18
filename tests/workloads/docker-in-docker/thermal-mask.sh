@@ -2,12 +2,12 @@
 set -eu
 
 _container="nscell-thermal-mask"
-_source="/tmp/nscell-thermal-cpu0"
+_volume="nscell-thermal-cpu0"
 _request=""
 
 __cleanup() {
   docker rm -f "$_container" >/dev/null 2>&1 || true
-  rm -rf "$_source"
+  docker volume rm "$_volume" >/dev/null 2>&1 || true
   if [ -n "$_request" ]; then
     rm -f "$_request"
   fi
@@ -32,12 +32,14 @@ __run_masked_container() {
 
   _request="$(mktemp /tmp/nscell-thermal-mask-request.XXXXXX)"
   trap __cleanup EXIT HUP INT TERM
-  rm -rf "$_source"
-  mkdir -p "${_source}/thermal_throttle"
   docker rm -f "$_container" >/dev/null 2>&1 || true
+  docker volume rm "$_volume" >/dev/null 2>&1 || true
+  docker volume create "$_volume" >/dev/null
+  _mountpoint="$(docker volume inspect --format '{{.Mountpoint}}' "$_volume")"
+  mkdir -p "${_mountpoint}/thermal_throttle"
   jq -n \
     --arg image "$_image" \
-    --arg bind "${_source}:/sys/devices/system/cpu/cpu0" \
+    --arg bind "${_volume}:/sys/devices/system/cpu/cpu0" \
     --arg path /sys/devices/system/cpu/cpu0/thermal_throttle \
     '{
       Image: $image,
