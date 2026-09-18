@@ -31,7 +31,9 @@ __require_cgroup_v2() {
 }
 
 __require_kernel_interfaces() {
-  local _kernel_config="/boot/config-$(uname -r)"
+  local _kernel_config
+
+  _kernel_config="/boot/config-$(uname -r)"
 
   test -c /dev/fuse
   test -r "$_kernel_config"

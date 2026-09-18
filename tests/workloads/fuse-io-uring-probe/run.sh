@@ -20,8 +20,10 @@ __cleanup() {
 }
 
 __kernel_config_value() {
-	local _config="/boot/config-$(uname -r)"
+	local _config
 	local _value
+
+	_config="/boot/config-$(uname -r)"
 
 	if [[ ! -r "$_config" ]]; then
 		printf 'unknown\n'
