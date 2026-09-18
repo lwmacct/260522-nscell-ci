@@ -183,7 +183,8 @@ __main() {
 	fi
 
 	__log "validating the disabled FUSE io_uring baseline"
-	timeout 20s sudo nscell daemon host io-uring | tee "$_disabled_probe_tmp"
+	timeout --signal=TERM --kill-after=5s 20s \
+		sudo nscell daemon host io-uring | tee "$_disabled_probe_tmp"
 	__assert_inventory \
 		"$_config_value" "$_original_enable_value" "$_disabled_value" "$_release" \
 		unsupported "$_disabled_probe_tmp"
@@ -200,7 +201,8 @@ __main() {
 	fi
 
 	__log "validating the enabled FUSE io_uring transport"
-	timeout 20s sudo nscell daemon host io-uring | tee "$_enabled_probe_tmp"
+	timeout --signal=TERM --kill-after=5s 20s \
+		sudo nscell daemon host io-uring | tee "$_enabled_probe_tmp"
 	__assert_inventory \
 		"$_config_value" "$_enabled_value" "$_disabled_value" "$_release" \
 		passed "$_enabled_probe_tmp"
