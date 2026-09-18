@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       nscell_image:
-        description: Exact OCI image containing the NSCell binary
+        description: Public NSCell image tag or digest; tags are resolved to an immutable digest
         required: true
         type: string
       vm_image_ref:

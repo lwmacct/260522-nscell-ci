@@ -58,7 +58,7 @@ jobs:
     name: Select smoke coverage
     runs-on: ubuntu-26.04
     outputs:
-      nscell_image: ${{ steps.image.outputs.nscell_image }}
+      nscell_image: ghcr.io/lwmacct/260522-nscell:main-validated
       runtime: ${{ steps.paths.outputs.runtime }}
     steps:
       - name: Checkout repository
@@ -97,32 +97,6 @@ jobs:
             else
               echo "runtime=false" >> "${GITHUB_OUTPUT}"
             fi
-          }
-
-          __main "$@"
-
-      - name: Setup ORAS
-        if: steps.paths.outputs.runtime == 'true'
-        uses: oras-project/setup-oras@v2.0.1
-        with:
-          version: 1.3.3
-
-      - name: Resolve smoke NSCell image
-        if: steps.paths.outputs.runtime == 'true'
-        id: image
-        env:
-          IMAGE_REF: ghcr.io/lwmacct/260522-nscell:main-validated
-        run: |
-          __main() {
-            local _image_ref
-
-            set -euo pipefail
-            _image_ref="$(oras resolve --full-reference "${IMAGE_REF}")"
-            if [[ ! "${_image_ref}" =~ ^ghcr.io/lwmacct/260522-nscell@sha256:[0-9a-f]{64}$ ]]; then
-              echo "unexpected resolved NSCell image reference: ${_image_ref}" >&2
-              return 1
-            fi
-            echo "nscell_image=${_image_ref}" >> "${GITHUB_OUTPUT}"
           }
 
           __main "$@"

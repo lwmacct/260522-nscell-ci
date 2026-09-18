@@ -15,7 +15,7 @@ on:
         default: ""
         type: string
       nscell_image:
-        description: Exact public OCI image containing the NSCell binary
+        description: Public NSCell image tag or digest; tags are resolved to an immutable digest
         required: true
         type: string
       suite:
@@ -46,7 +46,7 @@ on:
         default: ""
         type: string
       nscell_image:
-        description: Exact public OCI image containing the NSCell binary
+        description: Public NSCell image tag or digest; tags are resolved to an immutable digest
         required: true
         type: string
       suite:
@@ -87,6 +87,7 @@ defaults:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CI_REPOSITORY: lwmacct/260522-nscell-ci
+  NSCELL_ARTIFACT_REPOSITORY: ghcr.io/lwmacct/260522-nscell
   VM_ARTIFACT_REPOSITORY: ghcr.io/lwmacct/260522-nscell-ci
 
 jobs:
@@ -96,6 +97,7 @@ jobs:
     outputs:
       image_ref: ${{ steps.matrix.outputs.image_ref }}
       matrix: ${{ steps.matrix.outputs.matrix }}
+      nscell_image_ref: ${{ steps.matrix.outputs.nscell_image_ref }}
     steps:
       - name: Checkout CI repository
         uses: actions/checkout@v7.0.0
@@ -121,17 +123,31 @@ jobs:
         env:
           IMAGE_NAME: ${{ inputs.image_name || 'standard' }}
           IMAGE_REF: ${{ inputs.image_ref || '' }}
+          NSCELL_IMAGE_INPUT: ${{ inputs.nscell_image }}
           TEST_SUITE: ${{ inputs.suite }}
           SELECTED_TARGETS: ${{ inputs.targets }}
           TEST_GROUPING: ${{ inputs.grouping }}
         run: |
           __main() {
-            local _image_ref _matrix _requested_image_ref
+            local _image_ref _matrix _nscell_image_ref _requested_image_ref
+            local _requested_nscell_image
 
             if [[ ! "${IMAGE_NAME}" =~ ^[a-z0-9][a-z0-9-]*$ ]] ||
               [[ ! -f "images/${IMAGE_NAME}.yaml" ]]; then
               echo "unknown image profile: ${IMAGE_NAME}" >&2
               return 2
+            fi
+            _requested_nscell_image="${NSCELL_IMAGE_INPUT}"
+            if [[ ! "${_requested_nscell_image}" =~ ^${NSCELL_ARTIFACT_REPOSITORY}(:[A-Za-z0-9_][A-Za-z0-9._-]*|@sha256:[0-9a-f]{64})$ ]]; then
+              echo "unexpected NSCell image reference: ${_requested_nscell_image}" >&2
+              return 2
+            fi
+            # Resolve once so the run can name the image it validated and a bad
+            # reference fails before any VM boots.
+            _nscell_image_ref="$(oras resolve --full-reference "${_requested_nscell_image}")"
+            if [[ ! "${_nscell_image_ref}" =~ ^${NSCELL_ARTIFACT_REPOSITORY}@sha256:[0-9a-f]{64}$ ]]; then
+              echo "unexpected resolved NSCell image reference: ${_nscell_image_ref}" >&2
+              return 1
             fi
             _requested_image_ref="${IMAGE_REF}"
             if [[ -z "${_requested_image_ref}" ]]; then
@@ -147,6 +163,7 @@ jobs:
             )"
             echo "image_ref=${_image_ref}" >> "${GITHUB_OUTPUT}"
             echo "matrix=${_matrix}" >> "${GITHUB_OUTPUT}"
+            echo "nscell_image_ref=${_nscell_image_ref}" >> "${GITHUB_OUTPUT}"
             {
               echo "## VM test matrix"
               echo
@@ -154,7 +171,8 @@ jobs:
               echo "- Image profile: \`${IMAGE_NAME}\`"
               echo "- Requested image: \`${_requested_image_ref}\`"
               echo "- Resolved image: \`${_image_ref}\`"
-              echo "- NSCell image: \`${{ inputs.nscell_image }}\`"
+              echo "- Requested NSCell image: \`${_requested_nscell_image}\`"
+              echo "- Resolved NSCell image: \`${_nscell_image_ref}\`"
               echo "- Grouping: \`${TEST_GROUPING}\`"
               jq -r '.[] |
                 "- Group: `\(.name)` (timeout: \(.timeout_minutes)m, targets: \(.targets | join(", ")))"
@@ -218,7 +236,7 @@ jobs:
           vm_name: ${{ steps.vm.outputs.vm_name }}
           test_target: ${{ matrix.name }}
           test_targets_json: ${{ toJSON(matrix.targets) }}
-          nscell_image: ${{ inputs.nscell_image }}
+          nscell_image: ${{ needs.prepare.outputs.nscell_image_ref }}
 
       - name: Cleanup isolated VM
         if: always()

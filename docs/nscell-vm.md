@@ -59,12 +59,16 @@ The artifact contains `incus.tar.xz`, `disk.qcow2`, and `SHA256SUMS`.
   Ubuntu 26.04 VM and exercises its mount, namespace, pidfd, FUSE, and
   namespace-listing interfaces.
 
-Both test workflows accept `nscell_image`. The nscell release workflow passes
-an immutable digest and waits for their results, while manual runs can select
-any published nscell image.
-Before expanding the VM matrix, the workflow resolves the requested VM tag to
-an immutable OCI digest. Every isolated VM in that run therefore consumes the
-same image even if the stable profile tag changes while tests are running.
+Both test workflows accept `nscell_image` as either an immutable digest or a
+published tag such as `commit-<commit id>`. The nscell release workflow passes
+the digest it just built and waits for the results, while manual runs can name
+the tag they want to exercise.
+Before expanding the VM matrix, the workflow resolves both the requested VM tag
+and the requested NSCell tag to immutable OCI digests. Only
+`ghcr.io/lwmacct/260522-nscell` references are accepted. Resolving once lets the
+run record the exact image it validated and makes a missing or misspelled tag
+fail during matrix preparation instead of after every VM has booted. The run
+summary lists the requested reference and the resolved digest.
 The standard image's Docker store contains the pinned Python Alpine image used
 by Python-derived workloads and by the lightweight OCI-bundle workloads. The
 smoke target runs that preloaded image with `--pull=never`; it does not provide

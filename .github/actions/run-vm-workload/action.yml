@@ -12,7 +12,7 @@ inputs:
     description: JSON array of concrete targets to execute in this VM
     required: true
   nscell_image:
-    description: Exact public OCI image containing the NSCell binary
+    description: Public NSCell image digest; the caller resolves tags before dispatch
     required: true
 
 runs:

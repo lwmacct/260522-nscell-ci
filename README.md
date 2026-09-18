@@ -12,10 +12,11 @@ only the resources needed by runtime validation:
 - BTF, bpffs, and active BPF LSM
 - ID-mapped bind mounts and overlayfs on top of the mapped mount
 
-Every workflow validates binaries extracted from an exact public GHCR image,
-for example `ghcr.io/lwmacct/260522-nscell@sha256:...`. The runtime setup,
-gate check, diagnostics, and workload flow live in this repository under
-`scripts/ci.sh` and `tests/`.
+Every workflow validates binaries extracted from one public
+`ghcr.io/lwmacct/260522-nscell` image. Callers pass either an immutable digest
+or a tag such as `commit-<commit id>`; the run resolves the reference once
+before the VM matrix starts. The runtime setup, gate check, diagnostics, and
+workload flow live in this repository under `scripts/ci.sh` and `tests/`.
 
 All runtime workloads are stored in `tests/workloads/`. `tests/manifest.json`
 is the single catalog for VM availability, the `smoke`, `gate`, and `full`

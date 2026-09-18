@@ -5,9 +5,10 @@ owned by the NSCell repository and is not duplicated here.
 
 ## Workflows
 
-- `Test release` is called by the product release workflow with an immutable
-  NSCell image digest. It runs the complete `gate` suite on the canonical
-  Ubuntu 26.04 standard VM profile.
+- `Test release` is called by the product release workflow with the digest it
+  just built, while manual runs may pass a tag such as `commit-<commit id>`.
+  References are resolved to a digest once during preparation, then it runs the
+  complete `gate` suite on the canonical Ubuntu 26.04 standard VM profile.
 - `Test workloads in VM` is the manual debugging entry point. Choose a suite, or
   provide explicit target names for focused validation.
 - `Build VM images` creates the Ubuntu 26.04 standard VM artifact used by both
@@ -56,7 +57,7 @@ main inputs are:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `NSCELL_IMAGE` | `ghcr.io/lwmacct/260522-nscell:latest` | exact or mutable public NSCell image reference |
+| `NSCELL_IMAGE` | `ghcr.io/lwmacct/260522-nscell:latest` | exact or mutable public NSCell image reference; test workflows resolve the input to an immutable digest before the matrix starts |
 | `NSCELL_IMAGE_PLATFORM` | `linux/amd64` | platform manifest selected with ORAS |
 | `NSCELL_CI_TEST_ROOT` | `/tmp/nscell` | test workspace root |
 | `NSCELL_CI_IMAGE_CACHE_DIR` | `${NSCELL_CI_TEST_ROOT}/images` | image cache |
