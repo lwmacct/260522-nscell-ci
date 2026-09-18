@@ -71,9 +71,26 @@ __assert_inventory() {
       (.abi.sqe128 | type == "boolean") and
       (.abi.cqe32 | type == "boolean") and
       (.abi.featureBits | type == "number") and
-      .transportProbe == "not-run" and
-      .transportReady == false and
-      (.reasons | index("detached FUSE register/commit probe is not implemented") != null) and
+      (.transportProbe | IN("unsupported", "failed", "passed")) and
+      .transport.status == .transportProbe and
+      (if .transportProbe == "passed" then
+         .transportReady == true and
+         .transport.attempted == true and
+         .transport.fuseInit == true and
+         .transport.queueEntriesRegistered == .queueCount and
+         .transport.commitAndFetch == true and
+         .transport.teardown == true and
+         (.transport.durationMillis | type == "number" and . >= 0) and
+         (.transport | has("error") | not)
+       elif .transportProbe == "failed" then
+         .transportReady == false and
+         .transport.attempted == true and
+         (.transport.error | type == "string" and length > 0) and
+         (.transport.error as $_error | .reasons | index($_error) != null)
+       else
+         .transportReady == false and
+         .transport.attempted == false
+       end) and
       (if $_config == "y" then true
        else (.reasons | index("CONFIG_FUSE_IO_URING is not enabled") != null)
        end) and
@@ -82,6 +99,11 @@ __assert_inventory() {
        end) and
       (if $_disabled == "0" then true
        else (.reasons | index("io_uring is disabled by the host policy") != null)
+       end) and
+      (if ($_config == "y" and ($_enable | ascii_downcase) == "y" and $_disabled == "0" and
+           .abi.setup and .abi.uringCmd and .abi.sqe128 and .abi.cqe32)
+       then (.transportProbe == "passed" or .transportProbe == "failed")
+       else .transportProbe == "unsupported"
        end)
     ' "$_probe_tmp" >/dev/null
 }

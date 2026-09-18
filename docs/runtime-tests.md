@@ -27,7 +27,7 @@ default; set `grouping=bundled` to reuse a VM for compatible lightweight targets
 | `daemon-fail-stop` | fail-stop cleanup and daemon readiness |
 | `docker-in-docker` | nested Docker daemon and inner container lifecycle |
 | `fuse-copy-file-range` | FUSE data-path behavior |
-| `fuse-io-uring-probe` | full-suite-only FUSE io_uring ABI/resource baseline; does not enable the transport |
+| `fuse-io-uring-probe` | full-suite-only ABI/resource inventory plus bounded detached register/commit/teardown probe; never enables the host feature |
 | `fuse-request-timeout` | FUSE request timeout and cancellation |
 | `kernel-capability-smoke` | Linux 7 native ABI diagnostic set |
 | `kubernetes-k3s` | nested k3s node and inner pod lifecycle |
