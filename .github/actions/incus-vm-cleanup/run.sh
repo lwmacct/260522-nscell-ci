@@ -70,10 +70,13 @@ __collect_guest_logs() {
       __guest_bounded docker images || true
       systemctl --no-pager --full status incus-agent.service || true
       ps -eLo pid,ppid,tid,stat,wchan:32,comm,args || true
+      ls -l /sys/fs/fuse/connections || true
       for _pid in $(pgrep -x nscell || true); do
         printf "nscell process diagnostics: pid=%s\n" "${_pid}"
         cat "/proc/${_pid}/status" || true
         cat "/proc/${_pid}/wchan" || true
+        ls -l "/proc/${_pid}/fd" || true
+        cat "/proc/${_pid}/fdinfo"/* || true
         for _task_dir in "/proc/${_pid}"/task/*; do
           printf "nscell task stack: %s\n" "${_task_dir##*/}"
           cat "${_task_dir}/wchan" || true

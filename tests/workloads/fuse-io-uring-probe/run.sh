@@ -72,6 +72,68 @@ __fuse_mounts() {
 	awk '$0 ~ / - fuse(\.[^ ]+)? / { print }' /proc/self/mountinfo
 }
 
+__capture_probe_state() {
+	local _pid
+
+	echo "==> FUSE connections" >&2
+	ls -l /sys/fs/fuse/connections 2>&1 || true
+	for _pid in $(pgrep -x nscell || true); do
+		echo "==> nscell ${_pid} wchan: $(cat "/proc/${_pid}/wchan" 2>/dev/null || true)" >&2
+		sudo cat "/proc/${_pid}/stack" 2>&1 || true
+		sudo ls -l "/proc/${_pid}/fd" 2>&1 || true
+		sudo cat "/proc/${_pid}/fdinfo"/* 2>&1 || true
+	done
+	sudo dmesg --ctime 2>&1 | tail -n 40 || true
+}
+
+__wait_for_probe_exit() {
+	local _pid="$1"
+	local _budget="$2"
+	local _deadline=$((SECONDS + _budget))
+
+	while ((SECONDS < _deadline)); do
+		if ! kill -0 "${_pid}" 2>/dev/null; then
+			wait "${_pid}" 2>/dev/null || true
+			return 0
+		fi
+		sleep 1
+	done
+
+	return 1
+}
+
+# Run the enabled probe with its result redirected to a file: a pipe would hide
+# the reported result when the kernel keeps a thread stranded in a FUSE wait.
+# The probe must also terminate on its own instead of being killed by timeout.
+__run_enabled_probe() {
+	local _deadline=$((SECONDS + 20))
+	local _wrapper_pid
+
+	sudo timeout --signal=KILL 20s \
+		nscell daemon host io-uring >"$_enabled_probe_tmp" 2>&1 &
+	_wrapper_pid=$!
+
+	while ((SECONDS < _deadline)); do
+		if jq -e . "$_enabled_probe_tmp" >/dev/null 2>&1; then
+			break
+		fi
+		sleep 1
+	done
+	if ! jq -e . "$_enabled_probe_tmp" >/dev/null 2>&1; then
+		echo "FUSE io_uring probe produced no result within 20s" >&2
+		__capture_probe_state
+		return 1
+	fi
+	cat "$_enabled_probe_tmp"
+	sudo install -m 0644 \
+		"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-probe-enabled.json"
+	if ! __wait_for_probe_exit "${_wrapper_pid}" 15; then
+		echo "FUSE io_uring probe did not terminate after reporting a result" >&2
+		__capture_probe_state
+		return 1
+	fi
+}
+
 __assert_inventory() {
 	local _config_value="$1"
 	local _enable_value="$2"
@@ -201,8 +263,7 @@ __main() {
 	fi
 
 	__log "validating the enabled FUSE io_uring transport"
-	sudo timeout --signal=TERM --kill-after=5s 20s \
-		nscell daemon host io-uring | tee "$_enabled_probe_tmp"
+	__run_enabled_probe
 	__assert_inventory \
 		"$_config_value" "$_enabled_value" "$_disabled_value" "$_release" \
 		passed "$_enabled_probe_tmp"
