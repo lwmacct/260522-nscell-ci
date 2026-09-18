@@ -69,6 +69,18 @@ __collect_guest_logs() {
       __guest_bounded docker ps -a || true
       __guest_bounded docker images || true
       systemctl --no-pager --full status incus-agent.service || true
+      ps -eLo pid,ppid,tid,stat,wchan:32,comm,args || true
+      for _pid in $(pgrep -x nscell || true); do
+        printf "nscell process diagnostics: pid=%s\n" "${_pid}"
+        cat "/proc/${_pid}/status" || true
+        cat "/proc/${_pid}/wchan" || true
+        for _task_dir in "/proc/${_pid}"/task/*; do
+          printf "nscell task stack: %s\n" "${_task_dir##*/}"
+          cat "${_task_dir}/wchan" || true
+          cat "${_task_dir}/stack" || true
+        done
+      done
+      __guest_bounded dmesg --ctime || true
       journalctl --no-pager -u incus-agent.service || true
       journalctl --no-pager -u docker.service -u nscell-daemon.service || true
       test -f /var/log/nscell-runtime-invocations.log && cat /var/log/nscell-runtime-invocations.log || true
