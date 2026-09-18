@@ -78,6 +78,7 @@ __assert_inventory() {
 	local _disabled_value="$3"
 	local _release="$4"
 	local _expected_probe="$5"
+	local _probe_file="$6"
 
 	jq -e \
 		--arg _config "$_config_value" \
@@ -134,7 +135,7 @@ __assert_inventory() {
        then (.transportProbe == "passed" or .transportProbe == "failed")
        else .transportProbe == "unsupported"
        end)
-    ' "$_probe_tmp" >/dev/null
+    ' "$_probe_file" >/dev/null
 }
 
 __main() {
@@ -184,7 +185,8 @@ __main() {
 	__log "validating the disabled FUSE io_uring baseline"
 	timeout 20s sudo nscell daemon host io-uring | tee "$_disabled_probe_tmp"
 	__assert_inventory \
-		"$_config_value" "$_original_enable_value" "$_disabled_value" "$_release" unsupported
+		"$_config_value" "$_original_enable_value" "$_disabled_value" "$_release" \
+		unsupported "$_disabled_probe_tmp"
 	sudo install -m 0644 \
 		"$_disabled_probe_tmp" "${_log_root}/fuse-io-uring-probe-disabled.json"
 
@@ -200,7 +202,8 @@ __main() {
 	__log "validating the enabled FUSE io_uring transport"
 	timeout 20s sudo nscell daemon host io-uring | tee "$_enabled_probe_tmp"
 	__assert_inventory \
-		"$_config_value" "$_enabled_value" "$_disabled_value" "$_release" passed
+		"$_config_value" "$_enabled_value" "$_disabled_value" "$_release" \
+		passed "$_enabled_probe_tmp"
 	sudo install -m 0644 \
 		"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-probe.json"
 	sudo install -m 0644 \
