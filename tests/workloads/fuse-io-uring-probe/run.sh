@@ -145,7 +145,7 @@ __run_enabled_probe() {
 
 	# shellcheck disable=SC2024 # The redirect target is owned by the workload user.
 	sudo timeout --signal=KILL 20s \
-		"${_arguments[@]}" >"${_output}" 2>&1 &
+		"${_arguments[@]}" >"${_output}" 2>"${_output}.stderr" &
 	_wrapper_pid=$!
 
 	while ((SECONDS < _deadline)); do
@@ -156,9 +156,12 @@ __run_enabled_probe() {
 	done
 	if ! jq -e . "${_output}" >/dev/null 2>&1; then
 		echo "FUSE io_uring probe produced no result within 20s" >&2
+		tail -n 20 "${_output}.stderr" >&2 || true
+		tail -n 20 "${_output}" >&2 || true
 		__capture_probe_state
 		return 1
 	fi
+	cat "${_output}.stderr" >&2 || true
 	cat "${_output}"
 	if ! __wait_for_probe_exit "${_wrapper_pid}" 15; then
 		echo "FUSE io_uring probe did not terminate after reporting a result" >&2
