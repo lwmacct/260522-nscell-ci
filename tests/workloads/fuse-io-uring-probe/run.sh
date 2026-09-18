@@ -66,8 +66,8 @@ __assert_inventory() {
       (.possibleCPUs | type == "number" and . > 0) and
       .queueCount == .possibleCPUs and
       .payloadBytes == 1048576 and
-      (.estimatedBytesPerConnection | type == "number" and
-        . >= (.queueCount * .payloadBytes)) and
+      (.estimatedBytesPerConnection | type == "number") and
+      .estimatedBytesPerConnection >= (.queueCount * .payloadBytes) and
       (.abi.setup | type == "boolean") and
       (.abi.uringCmd | type == "boolean") and
       (.abi.sqe128 | type == "boolean") and
