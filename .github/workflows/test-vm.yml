@@ -182,9 +182,32 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
+      - name: Compute Incus host cache key
+        id: incus-cache-key
+        run: |
+          __main() {
+            set -euo pipefail
+            mkdir -p "${RUNNER_TEMP}/incus-host-cache"
+            bash .github/scripts/incus-host-cache.sh key \
+              "${RUNNER_TEMP}/incus-host-cache/key.env"
+            cat "${RUNNER_TEMP}/incus-host-cache/key.env" >> "${GITHUB_OUTPUT}"
+          }
+
+          __main "$@"
+
+      - name: Restore Incus host package layer
+        id: incus-cache
+        uses: actions/cache/restore@v4.2.4
+        with:
+          path: ${{ runner.temp }}/incus-host-cache
+          key: ${{ steps.incus-cache-key.outputs.cache_key }}
+
       - name: Setup Incus host
         id: incus
         uses: ./.github/actions/incus-vm-setup
+        with:
+          host_cache_dir: ${{ runner.temp }}/incus-host-cache
+          host_cache_hit: ${{ steps.incus-cache.outputs.cache-hit }}
 
       - name: Pull and verify VM image
         id: image

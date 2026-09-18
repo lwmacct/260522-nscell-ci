@@ -1,0 +1,178 @@
+name: Build Incus host cache
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/actions/incus-vm-setup/action.yml
+      - .github/incus-host/**
+      - .github/scripts/incus-host-cache.sh
+      - .github/workflows/build-incus-host-cache.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-incus-host-cache
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: Build host layer
+    runs-on: ubuntu-26.04
+    outputs:
+      cache_key: ${{ steps.key.outputs.cache_key }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Compute exact host cache key
+        id: key
+        run: |
+          __main() {
+            set -euo pipefail
+            mkdir -p "${RUNNER_TEMP}/incus-host-cache"
+            bash .github/scripts/incus-host-cache.sh key "${GITHUB_OUTPUT}"
+          }
+
+          __main "$@"
+
+      - name: Require hosted image identity
+        if: steps.key.outputs.cache_enabled != 'true'
+        run: |
+          echo "The runner did not expose a stable image version; refusing to publish a host layer." >&2
+          exit 1
+
+      - name: Restore existing host layer
+        id: cache
+        uses: actions/cache/restore@v4.2.4
+        with:
+          path: ${{ runner.temp }}/incus-host-cache
+          key: ${{ steps.key.outputs.cache_key }}
+
+      - name: Capture standard runner baseline
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          __main() {
+            set -euo pipefail
+            bash .github/scripts/incus-host-cache.sh snapshot \
+              "${RUNNER_TEMP}/incus-host-cache.snar"
+          }
+
+          __main "$@"
+
+      - name: Install Incus host packages
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          __main() {
+            set -euo pipefail
+            bash .github/scripts/incus-host-cache.sh install
+          }
+
+          __main "$@"
+
+      - name: Create host filesystem delta
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          __main() {
+            set -euo pipefail
+            bash .github/scripts/incus-host-cache.sh build-delta \
+              "${RUNNER_TEMP}/incus-host-cache.snar" \
+              "${RUNNER_TEMP}/incus-host-cache" \
+              "${RUNNER_TEMP}/incus-host-cache/key.env"
+          }
+
+          __main "$@"
+
+      - name: Save host layer
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4.2.4
+        with:
+          path: ${{ runner.temp }}/incus-host-cache
+          key: ${{ steps.key.outputs.cache_key }}
+
+      - name: Summarize host layer
+        run: |
+          __main() {
+            local _size
+
+            set -euo pipefail
+            _size="$(du -h "${RUNNER_TEMP}/incus-host-cache/layer.tar" |
+              awk '{print $1}')"
+            {
+              echo "## Incus host cache"
+              echo
+              echo "- Key: ${{ steps.key.outputs.cache_key }}"
+              echo "- Layer size: ${_size}"
+              echo "- Cache hit during build: ${{ steps.cache.outputs.cache-hit }}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          }
+
+          __main "$@"
+
+  verify:
+    name: Verify host layer on fresh runner
+    needs: build
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Compute exact host cache key
+        id: key
+        run: |
+          __main() {
+            set -euo pipefail
+            mkdir -p "${RUNNER_TEMP}/incus-host-cache"
+            bash .github/scripts/incus-host-cache.sh key "${GITHUB_OUTPUT}"
+          }
+
+          __main "$@"
+
+      - name: Restore host layer
+        uses: actions/cache/restore@v4.2.4
+        with:
+          path: ${{ runner.temp }}/incus-host-cache
+          key: ${{ needs.build.outputs.cache_key }}
+          fail-on-cache-miss: true
+
+      - name: Apply host layer
+        run: |
+          __main() {
+            set -euo pipefail
+            bash .github/scripts/incus-host-cache.sh restore \
+              "${RUNNER_TEMP}/incus-host-cache"
+          }
+
+          __main "$@"
+
+      - name: Initialize Incus bridge
+        run: |
+          __main() {
+            set -euo pipefail
+            bash .github/scripts/incus-host-cache.sh initialize
+          }
+
+          __main "$@"
+
+      - name: Verify Incus host runtime
+        run: |
+          __main() {
+            set -euo pipefail
+            bash .github/scripts/incus-host-cache.sh verify
+          }
+
+          __main "$@"
