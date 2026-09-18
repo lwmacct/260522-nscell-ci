@@ -13,6 +13,7 @@
     {"name":"fuse-copy-file-range","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":6,"group":"light"}}},
     {"name":"fuse-io-uring-probe","kind":"workload","modes":{"vm":{"class":"experiment","timeout_minutes":5}}},
     {"name":"fuse-request-timeout","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5}}},
+    {"name":"fuse-transport-baseline","kind":"workload","modes":{"vm":{"class":"experiment","timeout_minutes":5}}},
     {"name":"kernel-capability-smoke","kind":"workload","modes":{"vm":{"class":"contract","timeout_minutes":5,"group":"light"}}},
     {"name":"new-mount-api-deny","kind":"workload","modes":{"vm":{"class":"policy","timeout_minutes":6}}},
     {"name":"procfs-cpu","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5}}},
