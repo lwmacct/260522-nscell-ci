@@ -223,12 +223,12 @@ __main() {
 			# The released binary is stripped and UPX-compressed, so symbol
 			# names only resolve for the kernel side; the DSO split still
 			# separates daemon code from kernel and libc.
-			sudo perf report --stdio -i "${_perf_file}" --sort dso --percent-limit 1 \
-				>"${_log_root}/fuse-cost-attribution.perf-dso.txt" 2>/dev/null || true
-			sudo perf report --stdio -i "${_perf_file}" --sort symbol --percent-limit 1 \
-				>"${_log_root}/fuse-cost-attribution.perf-symbol.txt" 2>/dev/null || true
-			sudo perf report --stdio -i "${_perf_file}" --sort symbol --percent-limit 20 \
-				>"${_log_root}/fuse-cost-attribution.perf-open-callers.txt" 2>/dev/null || true
+			sudo perf report --stdio -i "${_perf_file}" --sort dso --percent-limit 1 2>/dev/null |
+				sudo tee "${_log_root}/fuse-cost-attribution.perf-dso.txt" >/dev/null || true
+			sudo perf report --stdio -i "${_perf_file}" --sort symbol --percent-limit 1 2>/dev/null |
+				sudo tee "${_log_root}/fuse-cost-attribution.perf-symbol.txt" >/dev/null || true
+			sudo perf report --stdio -i "${_perf_file}" --sort symbol --percent-limit 20 2>/dev/null |
+				sudo tee "${_log_root}/fuse-cost-attribution.perf-open-callers.txt" >/dev/null || true
 			__perf_open_callers "${_perf_file}" \
 				>"${_log_root}/fuse-cost-attribution.perf-open-attribution.txt" 2>/dev/null || true
 		fi
