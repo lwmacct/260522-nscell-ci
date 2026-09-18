@@ -201,17 +201,30 @@ __tar_arguments() {
 	done < <(__tar_excludes)
 }
 
+__tar_roots() {
+	printf '%s\n' \
+		./etc \
+		./usr \
+		./lib \
+		./lib64 \
+		./bin \
+		./sbin \
+		./opt \
+		./var
+}
+
 __snapshot() {
 	local _snapshot_file="$1"
-	local -a _tar_args=()
+	local -a _tar_args=() _tar_roots=()
 
 	__require_command tar
 	mapfile -t _tar_args < <(__tar_arguments)
+	mapfile -t _tar_roots < <(__tar_roots)
 	sudo tar --create --file=/dev/null \
 		--directory=/ --one-file-system \
 		--listed-incremental="${_snapshot_file}" \
 		--xattrs --acls --selinux --numeric-owner \
-		"${_tar_args[@]}" .
+		"${_tar_args[@]}" "${_tar_roots[@]}"
 }
 
 __build_delta() {
@@ -219,7 +232,7 @@ __build_delta() {
 	local _layer_file="${_output_dir}/layer.tar"
 	local _manifest_file="${_output_dir}/manifest"
 	local _base_fingerprint _key _post_hash _layer_hash
-	local -a _tar_args=()
+	local -a _tar_args=() _tar_roots=()
 
 	[[ -s "${_base_file}" ]] || __die "missing base fingerprint file"
 	# shellcheck disable=SC1090
@@ -230,12 +243,13 @@ __build_delta() {
 	_key="${cache_key}"
 
 	mapfile -t _tar_args < <(__tar_arguments)
+	mapfile -t _tar_roots < <(__tar_roots)
 	install -d -m 0755 "${_output_dir}"
 	sudo tar --create --file="${_layer_file}" \
 		--directory=/ --one-file-system \
 		--listed-incremental="${_snapshot_file}" \
 		--xattrs --acls --selinux --numeric-owner \
-		"${_tar_args[@]}" .
+		"${_tar_args[@]}" "${_tar_roots[@]}"
 	sudo chown "$(id -u):$(id -g)" "${_layer_file}"
 	_post_hash="$(__package_manifest_hash)"
 	_layer_hash="$(sha256sum "${_layer_file}" | awk '{print $1}')"
