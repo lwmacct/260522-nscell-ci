@@ -353,8 +353,11 @@ __main() {
 			;;
 		esac
 		for _round in $(seq 1 "${_fuse_io_uring_probe_benchmark_rounds}"); do
-			__run_enabled_probe "$_enabled_probe_tmp" 65536 \
-				"${_fuse_io_uring_probe_benchmark_requests}" "${_variant_args[@]}"
+			if ! __run_enabled_probe "$_enabled_probe_tmp" 65536 \
+				"${_fuse_io_uring_probe_benchmark_requests}" "${_variant_args[@]}"; then
+				echo "transport-benchmark variant=${_variant} round=${_round} unavailable" >&2
+				continue
+			fi
 			jq -e '.benchmark.requests > 0 and (.benchmark.classic | (has("error") | not))' \
 				"$_enabled_probe_tmp" >/dev/null
 			jq -r --arg _variant "${_variant}" --arg _round "${_round}" '
