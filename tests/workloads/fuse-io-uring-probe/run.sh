@@ -330,23 +330,33 @@ __main() {
 	done
 
 	__log "measuring the per-request cost of both transports"
-	for _round in $(seq 1 "${_fuse_io_uring_probe_benchmark_rounds}"); do
-		__run_enabled_probe "$_enabled_probe_tmp" 65536 "${_fuse_io_uring_probe_benchmark_requests}"
-		jq -e '
-			.benchmark.requests > 0 and
-			(.benchmark.classic | (has("error") | not)) and
-			(.benchmark.ioUring | (has("error") | not))
-		' "$_enabled_probe_tmp" >/dev/null
-		jq -r --arg _round "${_round}" '
-			"transport-benchmark round=\($_round) requests=\(.benchmark.requests)"
-			+ " classic_us=\(.benchmark.classic.durationUsPerRequest)"
-			+ " classic_cpu_us=\(.benchmark.classic.cpuUsPerRequest)"
-			+ " io_uring_us=\(.benchmark.ioUring.durationUsPerRequest)"
-			+ " io_uring_cpu_us=\(.benchmark.ioUring.cpuUsPerRequest)"
-		' "$_enabled_probe_tmp"
-		sudo install -m 0644 \
-			"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-benchmark-${_round}.json"
-		__assert_no_probe_residue "benchmark round ${_round}"
+	for _variant in baseline clients4; do
+		for _round in $(seq 1 "${_fuse_io_uring_probe_benchmark_rounds}"); do
+			case "${_variant}" in
+			clients4)
+				__run_enabled_probe "$_enabled_probe_tmp" 65536 "${_fuse_io_uring_probe_benchmark_requests}" "--benchmark-clients 4"
+				;;
+			*)
+				__run_enabled_probe "$_enabled_probe_tmp" 65536 "${_fuse_io_uring_probe_benchmark_requests}"
+				;;
+			esac
+			jq -e '
+				.benchmark.requests > 0 and
+				(.benchmark.classic | (has("error") | not)) and
+				(.benchmark.ioUring | (has("error") | not))
+			' "$_enabled_probe_tmp" >/dev/null
+			jq -r --arg _round "${_round}" '
+				"transport-benchmark round=\($_round) requests=\(.benchmark.requests) clients=\(.benchmark.clients) entriesPerQueue=\(.benchmark.entriesPerQueue) setupFlags=\(.benchmark.setupFlags)"
+				+ " classic_us=\(.benchmark.classic.durationUsPerRequest)"
+				+ " classic_syscalls_per_req=\(.benchmark.classic.syscallsPerRequest)"
+				+ " io_uring_us=\(.benchmark.ioUring.durationUsPerRequest)"
+				+ " io_uring_syscalls_per_req=\(.benchmark.ioUring.syscallsPerRequest)"
+				+ " io_uring_enters=\(.benchmark.ioUring.ioUringEnterCalls)"
+			' "$_enabled_probe_tmp"
+			sudo install -m 0644 \
+				"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-benchmark-${_variant}-${_round}.json"
+			__assert_no_probe_residue "benchmark ${_variant} round ${_round}"
+		done
 	done
 
 	__restore_fuse_io_uring
