@@ -15,6 +15,7 @@ source "${_workload_dir}/library/images.sh"
 
 _metrics_url="http://127.0.0.1:9618/metrics"
 _read_rounds=200
+_perf_seconds=12
 
 __cleanup() {
 	docker rm -f "$_fuse_cost_attribution_name" >/dev/null 2>&1 || true
@@ -52,10 +53,23 @@ __daemon_cpu_seconds() {
 }
 
 __snapshot() {
-	local _body _cpu
+	local _body _cpu _opcodes
 
 	_body="$(curl -fsS "${_metrics_url}")"
 	_cpu="$(__daemon_cpu_seconds)"
+	_opcodes="$(awk '
+		match($1, /^nscell_virtfs_fuse_requests_by_opcode_total/) {
+			_label = $1
+			sub(/^.*opcode="/, "", _label)
+			sub(/".*$/, "", _label)
+			printf "%s %s\n", _label, $2
+		}
+	' <<<"${_body}" | jq -R -s '
+		split("\n")
+		| map(select(length > 0) | split(" "))
+		| map({key: .[0], value: (.[1] | tonumber)})
+		| from_entries
+	')"
 	jq -n \
 		--argjson _timestamp "$(date +%s)" \
 		--argjson _cpu_seconds "${_cpu}" \
@@ -64,6 +78,7 @@ __snapshot() {
 		--argjson _reply_bytes "$(__metric_value nscell_virtfs_fuse_reply_bytes_total "${_body}")" \
 		--argjson _reply_bytes_max "$(__metric_value nscell_virtfs_fuse_reply_bytes_max "${_body}")" \
 		--argjson _request_bytes_max "$(__metric_value nscell_virtfs_fuse_request_bytes_max "${_body}")" \
+		--argjson _opcodes "${_opcodes}" \
 		'{
 			timestamp: $_timestamp,
 			cpuSeconds: $_cpu_seconds,
@@ -71,12 +86,33 @@ __snapshot() {
 			replies: $_replies,
 			replyBytes: $_reply_bytes,
 			replyBytesMax: $_reply_bytes_max,
-			requestBytesMax: $_request_bytes_max
+			requestBytesMax: $_request_bytes_max,
+			opcodes: $_opcodes
 		}'
 }
 
+# perf is optional: the standard VM may not ship a matching linux-tools build.
+__perf_available() {
+	command -v perf >/dev/null 2>&1
+}
+
+__perf_report() {
+	local _file="$1"
+
+	if [[ ! -s "${_file}" ]]; then
+		printf 'unavailable\n'
+		return
+	fi
+	sudo perf script -i "${_file}" 2>/dev/null |
+		awk '
+			/^[^ \t]/ { if (_hit) { _hits++ } ; _total++ ; _hit = 0 ; next }
+			/internal\/fuse|fuse_dev|fuse_simple|fuse_lookup|fuse_perform|fuse_read|fuse_write|fuse_uring/ { _hit = 1 }
+			END { if (_hit) { _hits++ } ; printf "%d %d\n", (_total + 0), (_hits + 0) }
+		'
+}
+
 __main() {
-	local _after _before _report
+	local _after _before _perf_pid _perf_samples _report
 
 	if [[ "${1:-}" == "cleanup" ]]; then
 		__require_cmd docker
@@ -119,16 +155,30 @@ __main() {
 			sleep 3
 		' >/dev/null
 
+	_daemon_pid="$(systemctl show --property MainPID --value nscell-daemon.service)"
+	_perf_file="${_log_root}/fuse-cost-attribution.perf.data"
 	_before="$(__snapshot)"
+	if __perf_available; then
+		sudo perf record -F 99 -g -o "${_perf_file}" -p "${_daemon_pid}" -- \
+			sleep "${_perf_seconds}" >/dev/null 2>&1 &
+		_perf_pid=$!
+	fi
 	if ! docker wait "$_fuse_cost_attribution_name" >/dev/null; then
 		echo "cost window container did not exit cleanly" >&2
 		return 1
 	fi
 	_after="$(__snapshot)"
+	if [[ -n "${_perf_pid:-}" ]]; then
+		wait "${_perf_pid}" 2>/dev/null || true
+		_perf_samples="$(__perf_report "${_perf_file}")"
+	else
+		_perf_samples="unavailable"
+	fi
 
 	_report="$(jq -n \
 		--argjson _before "${_before}" \
 		--argjson _after "${_after}" \
+		--arg _perf_samples "${_perf_samples}" \
 		--argjson _us_per_roundtrip "${_fuse_cost_us_per_roundtrip}" '
 		($_after.timestamp - $_before.timestamp) as $_seconds
 		| ($_after.replies - $_before.replies) as $_replies
@@ -137,6 +187,10 @@ __main() {
 		| (if $_seconds > 0 then $_cpu_seconds / $_seconds else 0 end) as $_daemon_cores
 		| ($_rate * $_us_per_roundtrip / 1000000) as $_fuse_cores
 		| (if $_daemon_cores > 0 then $_fuse_cores / $_daemon_cores else 0 end) as $_share
+		| ($_perf_samples | split(" ")) as $_perf_parts
+		| (if $_perf_samples == "unavailable" then "unavailable" else "ok" end) as $_perf_status
+		| (if $_perf_status == "ok" then ($_perf_parts[0] | tonumber) else 0 end) as $_perf_total
+		| (if $_perf_status == "ok" then ($_perf_parts[1] | tonumber) else 0 end) as $_perf_hits
 		| {
 			windowSeconds: $_seconds,
 			replies: $_replies,
@@ -150,7 +204,19 @@ __main() {
 			fuseShareEstimate: $_share,
 			replyBytesTotal: ($_after.replyBytes - $_before.replyBytes),
 			replyBytesMax: $_after.replyBytesMax,
-			requestBytesMax: $_after.requestBytesMax
+			requestBytesMax: $_after.requestBytesMax,
+			perfStatus: $_perf_status,
+			perfSamples: $_perf_total,
+			perfFuseSamples: $_perf_hits,
+			perfFuseShare: (if $_perf_total > 0 then $_perf_hits / $_perf_total else 0 end),
+			opcodeDeltas: (
+				($_after.opcodes // {}) as $_after_opcodes
+				| ($_before.opcodes // {}) as $_before_opcodes
+				| (($_after_opcodes | keys) + ($_before_opcodes | keys) | unique)
+				| map({key: ., value: (($_after_opcodes[.] // 0) - ($_before_opcodes[.] // 0))})
+				| map(select(.value > 0))
+				| from_entries
+			)
 		}')"
 
 	if ! jq -e '
@@ -173,6 +239,12 @@ __main() {
 		"  daemon CPU per round trip (measured, model free): \(.daemonUsPerRoundtrip | . * 10 | round / 10) us",
 		"  FUSE estimate: \(.usPerRoundtrip) us/roundtrip = \(.fuseCpuCoresEstimate * 1000 | round / 1000) cores",
 		"  estimated FUSE share of daemon CPU: \(.fuseShareEstimate * 1000 | round / 10)%",
+		"  top opcodes: \(.opcodeDeltas | to_entries | sort_by(-.value) | .[0:5] | map("\(.key)=\(.value)") | join(", "))",
+		(if .perfStatus == "ok" then
+			"  perf attribution: \(.perfFuseSamples)/\(.perfSamples) samples in FUSE frames = \(.perfFuseShare * 1000 | round / 10)%"
+		else
+			"  perf attribution: unavailable (no usable perf in this VM)"
+		end),
 		"  payload maxima: request=\(.requestBytesMax)B reply=\(.replyBytesMax)B"
 	' <<<"${_report}"
 
