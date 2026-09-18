@@ -106,28 +106,33 @@ __wait_for_probe_exit() {
 # the reported result when the kernel keeps a thread stranded in a FUSE wait.
 # The probe must also terminate on its own instead of being killed by timeout.
 __run_enabled_probe() {
+	local _output="$1"
+	local _payload_bytes="$2"
 	local _deadline=$((SECONDS + 20))
 	local _wrapper_pid
+	local -a _arguments=(nscell daemon host io-uring)
+
+	if [[ "${_payload_bytes}" != "0" ]]; then
+		_arguments+=(--payload-bytes "${_payload_bytes}")
+	fi
 
 	# shellcheck disable=SC2024 # The redirect target is owned by the workload user.
 	sudo timeout --signal=KILL 20s \
-		nscell daemon host io-uring >"$_enabled_probe_tmp" 2>&1 &
+		"${_arguments[@]}" >"${_output}" 2>&1 &
 	_wrapper_pid=$!
 
 	while ((SECONDS < _deadline)); do
-		if jq -e . "$_enabled_probe_tmp" >/dev/null 2>&1; then
+		if jq -e . "${_output}" >/dev/null 2>&1; then
 			break
 		fi
 		sleep 1
 	done
-	if ! jq -e . "$_enabled_probe_tmp" >/dev/null 2>&1; then
+	if ! jq -e . "${_output}" >/dev/null 2>&1; then
 		echo "FUSE io_uring probe produced no result within 20s" >&2
 		__capture_probe_state
 		return 1
 	fi
-	cat "$_enabled_probe_tmp"
-	sudo install -m 0644 \
-		"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-probe-enabled.json"
+	cat "${_output}"
 	if ! __wait_for_probe_exit "${_wrapper_pid}" 15; then
 		echo "FUSE io_uring probe did not terminate after reporting a result" >&2
 		__capture_probe_state
@@ -141,7 +146,8 @@ __assert_inventory() {
 	local _disabled_value="$3"
 	local _release="$4"
 	local _expected_probe="$5"
-	local _probe_file="$6"
+	local _expected_payload="$6"
+	local _probe_file="$7"
 
 	jq -e \
 		--arg _config "$_config_value" \
@@ -155,7 +161,7 @@ __assert_inventory() {
       .ioUringDisabled == $_disabled and
       (.possibleCPUs | type == "number" and . > 0) and
       .queueCount == .possibleCPUs and
-      .payloadBytes == 1048576 and
+      .payloadBytes == ($_expected_payload | tonumber) and
       (.estimatedBytesPerConnection | type == "number") and
       .estimatedBytesPerConnection >= (.queueCount * .payloadBytes) and
       (.abi.setup | type == "boolean") and
@@ -171,6 +177,7 @@ __assert_inventory() {
          .transport.attempted == true and
          .transport.fuseInit == true and
          .transport.queueEntriesRegistered == .queueCount and
+         .transport.entryPayloadBytes == ([8192, ($_expected_payload | tonumber)] | max) and
          .transport.commitAndFetch == true and
          .transport.teardown == true and
          (.transport.durationMillis | type == "number" and . >= 0) and
@@ -198,7 +205,7 @@ __assert_inventory() {
        then (.transportProbe == "passed" or .transportProbe == "failed")
        else .transportProbe == "unsupported"
        end)
-    ' "$_probe_file" >/dev/null
+    ' --arg _expected_payload "$_expected_payload" "$_probe_file" >/dev/null
 }
 
 __main() {
@@ -250,7 +257,7 @@ __main() {
 		nscell daemon host io-uring | tee "$_disabled_probe_tmp"
 	__assert_inventory \
 		"$_config_value" "$_original_enable_value" "$_disabled_value" "$_release" \
-		unsupported "$_disabled_probe_tmp"
+		unsupported 1048576 "$_disabled_probe_tmp"
 	sudo install -m 0644 \
 		"$_disabled_probe_tmp" "${_log_root}/fuse-io-uring-probe-disabled.json"
 
@@ -263,15 +270,23 @@ __main() {
 		return 1
 	fi
 
-	__log "validating the enabled FUSE io_uring transport"
-	__run_enabled_probe
-	__assert_inventory \
-		"$_config_value" "$_enabled_value" "$_disabled_value" "$_release" \
-		passed "$_enabled_probe_tmp"
-	sudo install -m 0644 \
-		"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-probe.json"
-	sudo install -m 0644 \
-		"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-probe-enabled.json"
+	__log "validating the enabled FUSE io_uring transport across payload budgets"
+	for _payload_bytes in 1048576 262144 65536 8192; do
+		__run_enabled_probe "$_enabled_probe_tmp" "$_payload_bytes"
+		__assert_inventory \
+			"$_config_value" "$_enabled_value" "$_disabled_value" "$_release" \
+			passed "$_payload_bytes" "$_enabled_probe_tmp"
+		jq -r '"io-uring payloadBytes=\(.payloadBytes) entryPayloadBytes=\(.transport.entryPayloadBytes) status=\(.transportProbe) estimatedBytesPerConnection=\(.estimatedBytesPerConnection)"' \
+			"$_enabled_probe_tmp"
+		sudo install -m 0644 \
+			"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-probe-payload-${_payload_bytes}.json"
+		if [[ "$_payload_bytes" == 1048576 ]]; then
+			sudo install -m 0644 \
+				"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-probe.json"
+			sudo install -m 0644 \
+				"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-probe-enabled.json"
+		fi
+	done
 
 	__restore_fuse_io_uring
 	if [[ "$(__kernel_value "$_fuse_enable_path")" != "$_original_enable_value" ]]; then
