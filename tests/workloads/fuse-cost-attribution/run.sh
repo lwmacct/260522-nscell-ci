@@ -289,9 +289,11 @@ __main() {
 
 	if [[ "${_perf_mode}" != "unavailable" ]]; then
 		printf '\n==> perf DSO split (daemon binary vs kernel vs libc)\n'
-		sed -n '/^#/d;/^$/d;p' "${_log_root}/fuse-cost-attribution.perf-dso.txt" | head -n 8
+		awk '! /^#/ && ! /^$/ && _shown < 8 { print; _shown++ }' \
+			"${_log_root}/fuse-cost-attribution.perf-dso.txt"
 		printf '\n==> perf top symbols\n'
-		sed -n '/^#/d;/^$/d;p' "${_log_root}/fuse-cost-attribution.perf-symbol.txt" | head -n 12
+		awk '! /^#/ && ! /^$/ && _shown < 12 { print; _shown++ }' \
+			"${_log_root}/fuse-cost-attribution.perf-symbol.txt"
 	fi
 
 	trap - EXIT
