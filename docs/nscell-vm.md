@@ -7,9 +7,9 @@ Incus from the signed Zabbly source at `pkgs.zabbly.com`.
 One production profile is maintained:
 
 - `images/standard.yaml` is Ubuntu 26.04 with `linux-image-virtual-hwe-26.04`.
-  Ubuntu 26.04 currently boots the `7.0.0-X-generic` kernel series, so this
-  profile provides both the Linux 7.0 minimum-kernel gate and broad
-  current-kernel workload coverage. It also contains the unpacked Docker image
+  Ubuntu 26.04 currently boots the `7.0.0-X-generic` kernel series, so this is
+  the canonical minimum validation profile as well as the supported current
+  workload profile. It also contains the unpacked Docker image
   store for the pinned Python Alpine base used by repeated runtime workloads.
 
 The profile contains the Incus VM agent, the Docker runtime stack, FUSE and

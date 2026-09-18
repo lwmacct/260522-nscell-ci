@@ -4,6 +4,10 @@ This plan tracks the approved CI optimization sequence. The objective is to
 remove avoidable per-workload image work without hiding runtime coverage behind
 a large all-in-one VM image.
 
+Historical measurements below mention Linux 6.18 and Linux-floor profiles that
+were later retired. The current validation boundary is the single Ubuntu 26.04
+standard profile documented in `nscell-vm.md` and `runtime-tests.md`.
+
 ## Phase 1: deterministic lightweight workloads
 
 Status: **complete in this change**
@@ -119,12 +123,13 @@ workloads that intentionally mutate daemon state:
   diagnostics artifact.
 
 Daemon-mutating tests, Docker-in-Docker, Kubernetes, and systemd remain in
-their own VMs. The expected standard-gate matrix falls from 21 VMs to 13 VMs;
-including the Linux floor, a release gate falls from 24 VMs to 14. Based on the
-three successful September 17 isolated runs, grouping was expected to save
-roughly 20 minutes of cumulative runner time per gate. The measured result is
-recorded below. Gate wall time remains bounded by Docker-in-Docker until
-slow-path review.
+their own VMs. The standard-gate matrix fell from 21 VMs to 13 VMs. The
+September 17 release baseline still included the then-existing Linux-floor
+profile, so its release gate fell from 24 VMs to 14; that floor profile has
+since been retired. Based on the three successful isolated runs, grouping was
+expected to save roughly 20 minutes of cumulative runner time per gate. The
+measured result is recorded below. Gate wall time remained bounded by
+Docker-in-Docker until slow-path review.
 
 Validation:
 
@@ -192,7 +197,7 @@ The September 16, 2026 gate run showed:
 - The Python layer download itself was fast; extraction dominated.
 - `procfs-memory` spent about 116 seconds in image preparation because of both
   the Python base and `build-base`.
-- The standard and Linux-floor qcow2 artifacts were approximately 746MB and
-  920MB respectively.
-- Both VM profiles already set `GRUB_TIMEOUT=0` and
-  `GRUB_RECORDFAIL_TIMEOUT=0`; there is no GRUB countdown to remove.
+- The standard qcow2 artifact was approximately 746MB; the then-existing
+  Linux-floor artifact was approximately 920MB.
+- Both contemporary VM profiles already set `GRUB_TIMEOUT=0` and
+  `GRUB_RECORDFAIL_TIMEOUT=0`; there was no GRUB countdown to remove.

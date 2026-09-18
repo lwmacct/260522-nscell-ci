@@ -53,3 +53,5 @@ Actions change. This repository does not use a pull-request workflow.
 
 The dedicated Ubuntu VM image and its nested Incus validation workflows are
 documented in [`docs/nscell-vm.md`](docs/nscell-vm.md).
+Runtime workflow inputs, target coverage, and disposable-runner environment
+variables are documented in [`docs/runtime-tests.md`](docs/runtime-tests.md).
