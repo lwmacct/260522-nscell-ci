@@ -131,12 +131,16 @@ __wait_for_probe_exit() {
 __run_enabled_probe() {
 	local _output="$1"
 	local _payload_bytes="$2"
+	local _benchmark_requests="${3:-0}"
 	local _deadline=$((SECONDS + 20))
 	local _wrapper_pid
 	local -a _arguments=(nscell daemon host io-uring)
 
 	if [[ "${_payload_bytes}" != "0" ]]; then
 		_arguments+=(--payload-bytes "${_payload_bytes}")
+	fi
+	if [[ "${_benchmark_requests}" != "0" ]]; then
+		_arguments+=(--benchmark-requests "${_benchmark_requests}")
 	fi
 
 	# shellcheck disable=SC2024 # The redirect target is owned by the workload user.
@@ -321,6 +325,19 @@ __main() {
 			"$_enabled_probe_tmp" >/dev/null
 		__assert_no_probe_residue "iteration ${_iteration}"
 	done
+
+	__log "measuring the per-request cost of both transports"
+	__run_enabled_probe "$_enabled_probe_tmp" 65536 "${_fuse_io_uring_probe_benchmark_requests}"
+	jq -e '
+		.benchmark.requests > 0 and
+		(.benchmark.classic | (has("error") | not)) and
+		(.benchmark.ioUring | (has("error") | not))
+	' "$_enabled_probe_tmp" >/dev/null
+	jq -r '"transport-benchmark requests=\(.benchmark.requests) classic_us_per_request=\(.benchmark.classic.durationUsPerRequest) classic_cpu_us_per_request=\(.benchmark.classic.cpuUsPerRequest) io_uring_us_per_request=\(.benchmark.ioUring.durationUsPerRequest) io_uring_cpu_us_per_request=\(.benchmark.ioUring.cpuUsPerRequest)"' \
+		"$_enabled_probe_tmp"
+	sudo install -m 0644 \
+		"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-benchmark.json"
+	__assert_no_probe_residue "benchmark"
 
 	__restore_fuse_io_uring
 	if [[ "$(__kernel_value "$_fuse_enable_path")" != "$_original_enable_value" ]]; then
