@@ -197,7 +197,7 @@ jobs:
 
       - name: Restore Incus host package layer
         id: incus-cache
-        uses: actions/cache/restore@v4.2.4
+        uses: actions/cache/restore@v6.1.0
         with:
           path: ${{ runner.temp }}/incus-host-cache
           key: ${{ steps.incus-cache-key.outputs.cache_key }}

@@ -23,6 +23,11 @@ env:
   ACTIONLINT_VERSION: 1.7.12
 
 jobs:
+  incus_host_cache:
+    name: Build and verify Incus host cache
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/build-incus-host-cache.yml
+
   static:
     name: Static checks
     runs-on: ubuntu-26.04
@@ -130,9 +135,18 @@ jobs:
   vm-smoke:
     name: VM smoke
     needs:
+      - incus_host_cache
       - static
       - changes
-    if: needs.changes.outputs.runtime == 'true'
+    if: >-
+      ${{
+        always() &&
+        needs.static.result == 'success' &&
+        needs.changes.result == 'success' &&
+        needs.changes.outputs.runtime == 'true' &&
+        (needs.incus_host_cache.result == 'success' ||
+          needs.incus_host_cache.result == 'skipped')
+      }}
     uses: ./.github/workflows/test-vm.yml
     with:
       image_name: standard

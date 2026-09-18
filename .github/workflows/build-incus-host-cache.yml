@@ -1,6 +1,7 @@
 name: Build Incus host cache
 
 on:
+  workflow_call:
   push:
     branches:
       - main
@@ -31,6 +32,7 @@ jobs:
     runs-on: ubuntu-26.04
     outputs:
       cache_key: ${{ steps.key.outputs.cache_key }}
+      cache_hit: ${{ steps.cache.outputs.cache-hit }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7.0.0
@@ -44,6 +46,7 @@ jobs:
             set -euo pipefail
             mkdir -p "${RUNNER_TEMP}/incus-host-cache"
             bash .github/scripts/incus-host-cache.sh key "${GITHUB_OUTPUT}"
+            cp "${GITHUB_OUTPUT}" "${RUNNER_TEMP}/incus-host-cache/key.env"
           }
 
           __main "$@"
@@ -56,7 +59,7 @@ jobs:
 
       - name: Restore existing host layer
         id: cache
-        uses: actions/cache/restore@v4.2.4
+        uses: actions/cache/restore@v6.1.0
         with:
           path: ${{ runner.temp }}/incus-host-cache
           key: ${{ steps.key.outputs.cache_key }}
@@ -95,12 +98,14 @@ jobs:
 
           __main "$@"
 
-      - name: Save host layer
-        if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4.2.4
+      - name: Upload host layer for fresh-runner verification
+        uses: actions/upload-artifact@v7.0.1
         with:
+          name: incus-host-cache-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/incus-host-cache
-          key: ${{ steps.key.outputs.cache_key }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
 
       - name: Summarize host layer
         run: |
@@ -142,12 +147,30 @@ jobs:
 
           __main "$@"
 
-      - name: Restore host layer
-        uses: actions/cache/restore@v4.2.4
+      - name: Require identical fresh runner
+        env:
+          BUILD_CACHE_KEY: ${{ needs.build.outputs.cache_key }}
+          VERIFY_CACHE_ENABLED: ${{ steps.key.outputs.cache_enabled }}
+          VERIFY_CACHE_KEY: ${{ steps.key.outputs.cache_key }}
+        run: |
+          __main() {
+            set -euo pipefail
+            [[ "${VERIFY_CACHE_ENABLED}" == true ]]
+            if [[ "${VERIFY_CACHE_KEY}" != "${BUILD_CACHE_KEY}" ]]; then
+              echo "Fresh runner cache key differs from build runner." >&2
+              echo "Build:  ${BUILD_CACHE_KEY}" >&2
+              echo "Verify: ${VERIFY_CACHE_KEY}" >&2
+              return 1
+            fi
+          }
+
+          __main "$@"
+
+      - name: Download host layer
+        uses: actions/download-artifact@v8.0.1
         with:
+          name: incus-host-cache-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/incus-host-cache
-          key: ${{ needs.build.outputs.cache_key }}
-          fail-on-cache-miss: true
 
       - name: Apply host layer
         run: |
@@ -173,6 +196,36 @@ jobs:
           __main() {
             set -euo pipefail
             bash .github/scripts/incus-host-cache.sh verify
+          }
+
+          __main "$@"
+
+      - name: Publish verified host layer
+        if: needs.build.outputs.cache_hit != 'true'
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: ${{ runner.temp }}/incus-host-cache
+          key: ${{ needs.build.outputs.cache_key }}
+
+      - name: Summarize verification
+        env:
+          BUILD_CACHE_HIT: ${{ needs.build.outputs.cache_hit }}
+          CACHE_KEY: ${{ needs.build.outputs.cache_key }}
+        run: |
+          __main() {
+            local _size
+
+            set -euo pipefail
+            _size="$(du -h "${RUNNER_TEMP}/incus-host-cache/layer.tar" |
+              awk '{print $1}')"
+            {
+              echo "## Verified Incus host cache"
+              echo
+              echo "- Key: \`${CACHE_KEY}\`"
+              echo "- Layer size: \`${_size}\`"
+              echo "- Existing cache hit: \`${BUILD_CACHE_HIT}\`"
+              echo "- Fresh-runner restore: \`passed\`"
+            } >> "${GITHUB_STEP_SUMMARY}"
           }
 
           __main "$@"
