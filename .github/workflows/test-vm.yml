@@ -161,9 +161,11 @@ jobs:
             _matrix="$(
               bash tests/manifest.sh select vm "${TEST_SUITE}" "${SELECTED_TARGETS}" "${TEST_GROUPING}"
             )"
-            echo "image_ref=${_image_ref}" >> "${GITHUB_OUTPUT}"
-            echo "matrix=${_matrix}" >> "${GITHUB_OUTPUT}"
-            echo "nscell_image_ref=${_nscell_image_ref}" >> "${GITHUB_OUTPUT}"
+            {
+              echo "image_ref=${_image_ref}"
+              echo "matrix=${_matrix}"
+              echo "nscell_image_ref=${_nscell_image_ref}"
+            } >> "${GITHUB_OUTPUT}"
             {
               echo "## VM test matrix"
               echo
