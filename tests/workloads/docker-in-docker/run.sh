@@ -78,6 +78,62 @@ __wait_for_inner_docker() {
 	"
 }
 
+__check_thermal_mask_environment() {
+  local _name="$1"
+
+  __log "checking nested runtime thermal mask environment"
+  printf 'vm-host-kernel='
+  uname -srvm
+  printf 'vm-host-cpu-count=%s\n' "$(nproc)"
+  if [[ -d /sys/devices/system/cpu/cpu0/thermal_throttle ]]; then
+    echo "vm-host-thermal-throttle-sysfs=present"
+  else
+    echo "vm-host-thermal-throttle-sysfs=absent"
+  fi
+  docker exec "$_name" nscell-ci-docker-in-docker-thermal-mask diagnostics
+}
+
+__check_nested_thermal_mask() {
+  local _name="$1"
+
+  __log "checking deterministic nested runc thermal mask"
+  docker exec "$_name" nscell-ci-docker-in-docker-thermal-mask run
+}
+
+__check_default_profile_thermal_mask_denied() {
+  local _name="${_docker_in_docker_name}-thermal-default"
+  local _output _status
+
+  __log "checking default profile thermal mask denial"
+  docker rm -f "$_name" >/dev/null 2>&1 || true
+  set +e
+  _output="$(
+    docker run --rm \
+      --name "$_name" \
+      --hostname "$_name" \
+      --runtime nscell \
+      --cgroupns=private \
+      --annotation "io.backend.security.profile=default" \
+      --label "io.backend.security.profile=default" \
+      --entrypoint sh \
+      "$_docker_in_docker_image" \
+      -c 'exec nscell-ci-docker-in-docker-thermal-mask run' 2>&1
+  )"
+  _status=$?
+  set -e
+  printf '%s\n' "$_output"
+
+  if [[ "$_status" -eq 0 ]]; then
+    echo "default profile unexpectedly allowed nested runtime thermal mask" >&2
+    return 1
+  fi
+  if [[ "$_output" != *thermal_throttle* ]]; then
+    echo "default profile denial did not identify thermal_throttle" >&2
+    return 1
+  fi
+  echo "default-profile-thermal-mask-denied"
+}
+
 __main() {
   local _root="${_volume_root}/docker-in-docker"
 
@@ -113,6 +169,9 @@ __main() {
   __log "checking inner docker"
   __wait_for_inner_docker "$_docker_in_docker_name"
   docker exec "$_docker_in_docker_name" nscell-ci-docker-in-docker-smoke
+  __check_thermal_mask_environment "$_docker_in_docker_name"
+  __check_nested_thermal_mask "$_docker_in_docker_name"
+  __check_default_profile_thermal_mask_denied
 
   __log "checking host docker top"
   docker top "$_docker_in_docker_name" >/dev/null

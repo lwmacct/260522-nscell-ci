@@ -21,11 +21,11 @@ default; set `grouping=bundled` to reuse a VM for compatible lightweight targets
 
 | Target | Coverage |
 | --- | --- |
-| `container-security-policy` | security profile, BPF audit, xattr, proc/sys, and process isolation |
+| `container-security-policy` | security profile, BPF audit, xattr, proc/sys, process isolation, and nested runtime mask boundaries |
 | `daemon-crash-recovery` | crash-time persistent state and recovery |
 | `daemon-dial-retry` | control connection retry behavior |
 | `daemon-fail-stop` | fail-stop cleanup and daemon readiness |
-| `docker-in-docker` | nested Docker daemon and inner container lifecycle |
+| `docker-in-docker` | nested Docker daemon, inner container lifecycle, and deterministic runc `thermal_throttle` masking |
 | `fuse-copy-file-range` | FUSE data-path behavior |
 | `fuse-request-timeout` | FUSE request timeout and cancellation |
 | `kernel-capability-smoke` | Linux 7 native ABI diagnostic set |
