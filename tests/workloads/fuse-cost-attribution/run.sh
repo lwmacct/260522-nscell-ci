@@ -99,6 +99,26 @@ __perf_available() {
 	command -v perf >/dev/null 2>&1
 }
 
+__perf_record() {
+	local _file="$1"
+	local _mode_file="$2"
+	local _pid="$3"
+	local _seconds="$4"
+
+	if sudo perf record -F 99 -g -o "${_file}" -p "${_pid}" -- sleep "${_seconds}" >/dev/null 2>&1; then
+		printf 'full\n' >"${_mode_file}"
+		return 0
+	fi
+	# Some kernels restrict kernel sampling even for root; user stacks still
+	# separate VirtFS serving work from everything else.
+	if sudo perf record -F 99 -g -e cycles:u -o "${_file}" -p "${_pid}" -- \
+		sleep "${_seconds}" >/dev/null 2>&1; then
+		printf 'user\n' >"${_mode_file}"
+		return 0
+	fi
+	printf 'unavailable\n' >"${_mode_file}"
+}
+
 __perf_report() {
 	local _file="$1"
 
@@ -160,10 +180,11 @@ __main() {
 
 	_daemon_pid="$(systemctl show --property MainPID --value nscell-daemon.service)"
 	_perf_file="${_log_root}/fuse-cost-attribution.perf.data"
+	_perf_mode_file="${_log_root}/fuse-cost-attribution.perf.mode"
+	rm -f "${_perf_file}" "${_perf_mode_file}"
 	_before="$(__snapshot)"
 	if __perf_available; then
-		sudo perf record -F 99 -g -o "${_perf_file}" -p "${_daemon_pid}" -- \
-			sleep "${_perf_seconds}" >/dev/null 2>&1 &
+		__perf_record "${_perf_file}" "${_perf_mode_file}" "${_daemon_pid}" "${_perf_seconds}" &
 		_perf_pid=$!
 	fi
 	if ! docker wait "$_fuse_cost_attribution_name" >/dev/null; then
@@ -171,17 +192,21 @@ __main() {
 		return 1
 	fi
 	_after="$(__snapshot)"
+	_perf_mode="unavailable"
+	_perf_samples="unavailable"
 	if [[ -n "${_perf_pid:-}" ]]; then
 		wait "${_perf_pid}" 2>/dev/null || true
-		_perf_samples="$(__perf_report "${_perf_file}")"
-	else
-		_perf_samples="unavailable"
+		_perf_mode="$(cat "${_perf_mode_file}" 2>/dev/null || printf 'unavailable')"
+		if [[ "${_perf_mode}" != "unavailable" ]]; then
+			_perf_samples="$(__perf_report "${_perf_file}")"
+		fi
 	fi
 
 	_report="$(jq -n \
 		--argjson _before "${_before}" \
 		--argjson _after "${_after}" \
 		--arg _perf_samples "${_perf_samples}" \
+		--arg _perf_mode "${_perf_mode}" \
 		--argjson _us_per_roundtrip "${_fuse_cost_us_per_roundtrip}" '
 		($_after.timestamp - $_before.timestamp) as $_seconds
 		| ($_after.replies - $_before.replies) as $_replies
@@ -210,6 +235,7 @@ __main() {
 			requestBytesMax: $_after.requestBytesMax,
 			auditEvents: ($_after.auditEvents - $_before.auditEvents),
 			perfStatus: $_perf_status,
+			perfMode: $_perf_mode,
 			perfSamples: $_perf_total,
 			perfFuseSamples: $_perf_hits,
 			perfFuseShare: (if $_perf_total > 0 then $_perf_hits / $_perf_total else 0 end),
@@ -247,7 +273,7 @@ __main() {
 		"  top opcodes: \(.opcodeDeltas | to_entries | sort_by(-.value) | .[0:5] | map("\(.key)=\(.value)") | join(", "))",
 		"  BPF gate audit events in window: \(.auditEvents) (per FUSE round trip: \(if .replies > 0 then (.auditEvents / .replies * 100 | round / 100) else 0 end))",
 		(if .perfStatus == "ok" then
-			"  perf attribution: \(.perfFuseSamples)/\(.perfSamples) samples in FUSE frames = \(.perfFuseShare * 1000 | round / 10)%"
+			"  perf attribution (\(.perfMode)): \(.perfFuseSamples)/\(.perfSamples) samples in FUSE frames = \(.perfFuseShare * 1000 | round / 10)%"
 		else
 			"  perf attribution: unavailable (no usable perf in this VM)"
 		end),

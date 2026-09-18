@@ -556,6 +556,8 @@ packages:
     - jq
     - kmod
     - libseccomp2
+    - linux-tools-common
+    - linux-tools-generic
     - netcat-openbsd
     - procps
     - python3
