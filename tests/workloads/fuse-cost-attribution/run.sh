@@ -53,10 +53,11 @@ __daemon_cpu_seconds() {
 }
 
 __snapshot() {
-	local _body _cpu _opcodes
+	local _audit _body _cpu _opcodes
 
 	_body="$(curl -fsS "${_metrics_url}")"
 	_cpu="$(__daemon_cpu_seconds)"
+	_audit="$(awk '/^nscell_bpf_gate_audit_events_total/ { _sum += $2 } END { print _sum + 0 }' <<<"${_body}")"
 	_opcodes="$(awk '
 		match($1, /^nscell_virtfs_fuse_requests_by_opcode_total/) {
 			_label = $1
@@ -78,6 +79,7 @@ __snapshot() {
 		--argjson _reply_bytes "$(__metric_value nscell_virtfs_fuse_reply_bytes_total "${_body}")" \
 		--argjson _reply_bytes_max "$(__metric_value nscell_virtfs_fuse_reply_bytes_max "${_body}")" \
 		--argjson _request_bytes_max "$(__metric_value nscell_virtfs_fuse_request_bytes_max "${_body}")" \
+		--argjson _audit "$_audit" \
 		--argjson _opcodes "${_opcodes}" \
 		'{
 			timestamp: $_timestamp,
@@ -87,6 +89,7 @@ __snapshot() {
 			replyBytes: $_reply_bytes,
 			replyBytesMax: $_reply_bytes_max,
 			requestBytesMax: $_request_bytes_max,
+			auditEvents: $_audit,
 			opcodes: $_opcodes
 		}'
 }
@@ -205,6 +208,7 @@ __main() {
 			replyBytesTotal: ($_after.replyBytes - $_before.replyBytes),
 			replyBytesMax: $_after.replyBytesMax,
 			requestBytesMax: $_after.requestBytesMax,
+			auditEvents: ($_after.auditEvents - $_before.auditEvents),
 			perfStatus: $_perf_status,
 			perfSamples: $_perf_total,
 			perfFuseSamples: $_perf_hits,
@@ -224,7 +228,8 @@ __main() {
 		.replies > 0 and
 		.requests > 0 and
 		.daemonCpuSeconds >= 0 and
-		.fuseShareEstimate >= 0
+		.fuseShareEstimate >= 0 and
+		.auditEvents >= 0
 	' <<<"${_report}" >/dev/null; then
 		echo "implausible FUSE cost window: ${_report}" >&2
 		return 1
@@ -240,6 +245,7 @@ __main() {
 		"  FUSE estimate: \(.usPerRoundtrip) us/roundtrip = \(.fuseCpuCoresEstimate * 1000 | round / 1000) cores",
 		"  estimated FUSE share of daemon CPU: \(.fuseShareEstimate * 1000 | round / 10)%",
 		"  top opcodes: \(.opcodeDeltas | to_entries | sort_by(-.value) | .[0:5] | map("\(.key)=\(.value)") | join(", "))",
+		"  BPF gate audit events in window: \(.auditEvents) (per FUSE round trip: \(if .replies > 0 then (.auditEvents / .replies * 100 | round / 100) else 0 end))",
 		(if .perfStatus == "ok" then
 			"  perf attribution: \(.perfFuseSamples)/\(.perfSamples) samples in FUSE frames = \(.perfFuseShare * 1000 | round / 10)%"
 		else
