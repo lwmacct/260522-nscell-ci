@@ -4,10 +4,9 @@ This page triages failures of the disposable VM runtime validation owned by
 this repository. Product deployment, host contract requirements, daemon
 recovery, and source-level debugging are owned by the
 [NSCell repository](https://github.com/lwmacct/260522-nscell); see its
-[deployment](https://github.com/lwmacct/260522-nscell/blob/main/docs/deployment.md)
+[deployment skill](https://github.com/lwmacct/260522-nscell/blob/main/.agents/skills/repo-deployment/SKILL.md)
 and
-[development](https://github.com/lwmacct/260522-nscell/blob/main/docs/development.md)
-guides.
+[development skill](https://github.com/lwmacct/260522-nscell/blob/main/.agents/skills/repo-development/SKILL.md).
 
 ## Start from the failed matrix job
 
