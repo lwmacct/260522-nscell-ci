@@ -210,7 +210,8 @@ __tar_roots() {
 		./bin \
 		./sbin \
 		./opt \
-		./var
+		./var/lib \
+		./var/cache/debconf
 }
 
 __snapshot() {
