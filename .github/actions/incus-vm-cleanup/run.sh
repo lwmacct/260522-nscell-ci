@@ -13,7 +13,6 @@ _share_dir="${RUNNER_TEMP:-/tmp}/test-vm-share-${_resource_id}"
 _exec_timeout="${NSCELL_CLEANUP_EXEC_TIMEOUT:-45s}"
 _pull_timeout="${NSCELL_CLEANUP_PULL_TIMEOUT:-15s}"
 _delete_timeout="${NSCELL_CLEANUP_DELETE_TIMEOUT:-30s}"
-_diagnostic_command_timeout="${NSCELL_CLEANUP_DIAGNOSTIC_COMMAND_TIMEOUT:-5s}"
 
 __bounded() {
   local _duration="$1"
@@ -44,12 +43,10 @@ __collect_guest_logs() {
   fi
 
   # shellcheck disable=SC2024 # The runner user owns the diagnostics destination.
-  __bounded "${_exec_timeout}" sudo incus exec "${_vm_name}" -- env \
-    NSCELL_CLEANUP_DIAGNOSTIC_COMMAND_TIMEOUT="${_diagnostic_command_timeout}" \
-    bash -euo pipefail -c '
+  __bounded "${_exec_timeout}" sudo incus exec "${_vm_name}" -- bash -euo pipefail -c '
     __guest_bounded() {
       timeout --signal=TERM --kill-after=2s \
-        "${NSCELL_CLEANUP_DIAGNOSTIC_COMMAND_TIMEOUT:?}" "$@"
+        5s "$@"
     }
 
     {
