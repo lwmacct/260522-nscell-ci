@@ -199,6 +199,13 @@ __main() {
 		_perf_mode="$(cat "${_perf_mode_file}" 2>/dev/null || printf 'unavailable')"
 		if [[ "${_perf_mode}" != "unavailable" ]]; then
 			_perf_samples="$(__perf_report "${_perf_file}")"
+			# The released binary is stripped and UPX-compressed, so symbol
+			# names only resolve for the kernel side; the DSO split still
+			# separates daemon code from kernel and libc.
+			sudo perf report --stdio -i "${_perf_file}" --sort dso --percent-limit 1 \
+				>"${_log_root}/fuse-cost-attribution.perf-dso.txt" 2>/dev/null || true
+			sudo perf report --stdio -i "${_perf_file}" --sort symbol --percent-limit 1 \
+				>"${_log_root}/fuse-cost-attribution.perf-symbol.txt" 2>/dev/null || true
 		fi
 	fi
 
@@ -279,6 +286,13 @@ __main() {
 		end),
 		"  payload maxima: request=\(.requestBytesMax)B reply=\(.replyBytesMax)B"
 	' <<<"${_report}"
+
+	if [[ "${_perf_mode}" != "unavailable" ]]; then
+		printf '\n==> perf DSO split (daemon binary vs kernel vs libc)\n'
+		sed -n '/^#/d;/^$/d;p' "${_log_root}/fuse-cost-attribution.perf-dso.txt" | head -n 8
+		printf '\n==> perf top symbols\n'
+		sed -n '/^#/d;/^$/d;p' "${_log_root}/fuse-cost-attribution.perf-symbol.txt" | head -n 12
+	fi
 
 	trap - EXIT
 	__cleanup
