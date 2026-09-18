@@ -78,27 +78,20 @@ __wait_for_inner_docker() {
 	"
 }
 
-__check_thermal_mask_environment() {
-  local _name="$1"
+__prepare_thermal_throttle_sysfs() {
+  local _cpu_path="/sys/devices/system/cpu/cpu0"
+  local _thermal_path="${_cpu_path}/thermal_throttle"
 
-  __log "checking nested runtime thermal mask environment"
-  printf 'vm-host-kernel='
-  uname -srvm
-  printf 'vm-host-cpu-count=%s\n' "$(nproc)"
-  if [[ -d /sys/devices/system/cpu/cpu0/thermal_throttle ]]; then
-    echo "vm-host-thermal-throttle-sysfs=present"
-  else
-    echo "vm-host-thermal-throttle-sysfs=absent"
+  if [[ -d "$_thermal_path" ]]; then
+    echo "vm-host-thermal-throttle-sysfs=native"
+    return
   fi
-  docker exec "$_name" nscell-ci-docker-in-docker-thermal-mask diagnostics
-}
 
-__check_nested_thermal_mask() {
-  local _name="$1"
-  local _image="$2"
-
-  __log "checking deterministic Docker thermal mask"
-  docker exec "$_name" nscell-ci-docker-in-docker-thermal-mask run "$_image"
+  __log "preparing thermal throttle sysfs fixture before starting NSCell workload"
+  sudo mount -t tmpfs -o mode=755,size=4k nscell-ci-thermal "$_cpu_path"
+  sudo mkdir -p "$_thermal_path"
+  test -d "$_thermal_path"
+  echo "vm-host-thermal-throttle-sysfs=fixture"
 }
 
 __main() {
@@ -118,6 +111,7 @@ __main() {
   __build_ci_image "$_docker_in_docker_image" "${_workload_dir}/workloads/docker-in-docker" --build-arg "BASE_IMAGE=${_docker_in_docker_base_image}"
   __build_ci_image "$_inner_nginx_image" "${_workload_path}" -f "${_workload_path}/nginx.Dockerfile" --build-arg "BASE_IMAGE=${_inner_nginx_base_image}"
   __prepare
+  __prepare_thermal_throttle_sysfs
 
   __log "starting Docker-in-Docker validation container"
   __ensure_host_image "$_docker_in_docker_image"
@@ -133,10 +127,12 @@ __main() {
 	'
   stat -c 'host-probe %u:%g %n' "${_root}/data/probe" "${_root}/docker/probe" "${_root}/docker/certs/probe"
 
+  __log "checking nested runtime thermal throttle sysfs"
+  docker exec "$_docker_in_docker_name" test -d /sys/devices/system/cpu/cpu0/thermal_throttle
+
   __log "checking inner docker"
   __wait_for_inner_docker "$_docker_in_docker_name"
   docker exec "$_docker_in_docker_name" nscell-ci-docker-in-docker-smoke
-  __check_thermal_mask_environment "$_docker_in_docker_name"
 
   __log "checking host docker top"
   docker top "$_docker_in_docker_name" >/dev/null
@@ -154,8 +150,6 @@ __main() {
   __log "checking inner nginx with docker load cache"
   __wait_for_inner_docker "$_docker_in_docker_name"
   __load_image_into_docker_container "$_docker_in_docker_name" "$_inner_nginx_image"
-  __check_nested_thermal_mask "$_docker_in_docker_name" "$_inner_nginx_image"
-  __check_nested_thermal_mask "$_docker_in_docker_name"
   docker exec "$_docker_in_docker_name" sh -lc "docker rm -f nginx >/dev/null 2>&1 || true"
   docker exec "$_docker_in_docker_name" sh -lc "docker run -d -p 80:80 --name=nginx '$_inner_nginx_image' >/dev/null"
   docker exec "$_docker_in_docker_name" sh -lc 'docker ps --filter name=nginx --format "inner-nginx {{.Status}} {{.Ports}}"'

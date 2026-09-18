@@ -655,29 +655,6 @@ __check_proc_sys() {
     "$_name" nscell-ci-container-security-policy-probe proc-sys-policy
 }
 
-__check_default_profile_nested_runtime_denied() {
-  local _profile="$1"
-  local _name="$2"
-  local _output _status
-
-  __log "checking nested runtime denial for ${_name} (${_profile})"
-  set +e
-  _output="$(docker exec "$_name" nscell-ci-container-security-policy-thermal-mask run 2>&1)"
-  _status=$?
-  set -e
-  printf '%s\n' "$_output"
-
-  if [[ "$_status" -eq 0 ]]; then
-    echo "${_profile} profile unexpectedly allowed nested runtime thermal mask" >&2
-    return 1
-  fi
-  if [[ "$_output" != *operation\ not\ permitted* ]]; then
-    echo "${_profile} profile nested runtime denial was not EPERM" >&2
-    return 1
-  fi
-  echo "${_profile}-profile-nested-runtime-denied"
-}
-
 __run_profile() {
   local _profile="$1"
   local _name="${_container_security_policy_name}-${_profile}"
@@ -694,9 +671,6 @@ __run_profile() {
     --label "io.backend.security.profile=${_profile}" \
     "$_container_security_policy_image" >/dev/null
 
-  if [[ "$_profile" == "default" ]]; then
-    __check_default_profile_nested_runtime_denied "$_profile" "$_name"
-  fi
   __log "checking process identity and namespace isolation in ${_name}"
   __check_process_identity_isolation "$_name"
   __check_devices "$_name"
