@@ -21,7 +21,7 @@ default; set `grouping=bundled` to reuse a VM for compatible lightweight targets
 
 | Target | Coverage |
 | --- | --- |
-| `container-security-policy` | security profile, BPF audit, xattr, proc/sys, process isolation, and nested runtime mask boundaries |
+| `container-security-policy` | security profile, BPF audit, xattr, proc/sys, process isolation, and default-profile nested runtime denial |
 | `daemon-crash-recovery` | crash-time persistent state and recovery |
 | `daemon-dial-retry` | control connection retry behavior |
 | `daemon-fail-stop` | fail-stop cleanup and daemon readiness |

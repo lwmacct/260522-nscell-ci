@@ -1,15 +1,13 @@
 #!/bin/sh
 set -eu
 
-_bundle=""
-_runc_root=""
+_container="nscell-thermal-mask"
+_request=""
 
 __cleanup() {
-  if [ -n "$_runc_root" ]; then
-    runc --root "$_runc_root" delete -f nscell-thermal-mask >/dev/null 2>&1 || true
-  fi
-  if [ -n "$_bundle" ]; then
-    rm -rf "$_bundle"
+  docker rm -f "$_container" >/dev/null 2>&1 || true
+  if [ -n "$_request" ]; then
+    rm -f "$_request"
   fi
 }
 
@@ -24,36 +22,50 @@ __diagnostics() {
   fi
 }
 
-__write_bundle() {
-  mkdir -p /var/lib/docker/overlay2
-  _bundle="$(mktemp -d /var/lib/docker/overlay2/nscell-thermal-mask.XXXXXX)"
-  _runc_root="/run/nscell-runc-thermal-mask-$$"
+__run_masked_container() {
+  _image="$1"
+  _response=""
+  _id=""
+  _state=""
+
+  _request="$(mktemp /tmp/nscell-thermal-mask-request.XXXXXX)"
   trap __cleanup EXIT HUP INT TERM
+  docker rm -f "$_container" >/dev/null 2>&1 || true
+  jq -n \
+    --arg image "$_image" \
+    --arg path /sys/devices/system/cpu/cpu0/thermal_throttle \
+    '{
+      Image: $image,
+      HostConfig: {
+        Tmpfs: {($path): ""},
+        MaskedPaths: [$path]
+      }
+    }' >"$_request"
 
-  mkdir -p \
-    "${_bundle}/rootfs/bin" \
-    "${_bundle}/rootfs/dev" \
-    "${_bundle}/rootfs/proc" \
-    "${_bundle}/rootfs/sys/devices/system/cpu/cpu0/thermal_throttle" \
-    "${_bundle}/rootfs/tmp"
-  cp /bin/busybox "${_bundle}/rootfs/bin/busybox"
-  ln -s busybox "${_bundle}/rootfs/bin/sh"
+  _response="$(
+    curl -sS \
+      --unix-socket /var/run/docker.sock \
+      -H 'Content-Type: application/json' \
+      -X POST \
+      --data-binary "@${_request}" \
+      "http://docker/containers/create?name=${_container}"
+  )"
+  if ! _id="$(printf '%s\n' "$_response" | jq -er '.Id // empty')"; then
+    printf '%s\n' "$_response" >&2
+    return 1
+  fi
 
-  (
-    cd "$_bundle"
-    runc spec
-    jq '
-      .process.terminal = false |
-      .process.args = ["/bin/sh", "-c", "printf \"%s\\n\" nscell-runc-thermal-mask-ok"] |
-      .root.readonly = false |
-      .mounts = [] |
-      .linux.namespaces = [{"type": "pid"}, {"type": "mount"}, {"type": "uts"}] |
-      .linux.maskedPaths = ["/sys/devices/system/cpu/cpu0/thermal_throttle"] |
-      del(.linux.resources)
-    ' config.json >config.json.next
-    mv config.json.next config.json
-    runc --root "$_runc_root" run nscell-thermal-mask
-  )
+  if ! docker start "$_container" >/dev/null; then
+    docker inspect --format 'thermal-mask-state running={{.State.Running}} error={{.State.Error}}' "$_container" >&2 || true
+    return 1
+  fi
+  sleep 2
+  _state="$(docker inspect --format '{{.State.Running}} {{.State.Error}}' "$_container")"
+  printf 'thermal-mask-state %s\n' "$_state"
+  if [ "${_state%% *}" != true ]; then
+    return 1
+  fi
+  echo 'nscell-runc-thermal-mask-ok'
 }
 
 __main() {
@@ -62,10 +74,14 @@ __main() {
       __diagnostics
       ;;
     run)
-      __write_bundle
+      if [ "$#" -ne 2 ]; then
+        echo "usage: $0 run IMAGE" >&2
+        exit 2
+      fi
+      __run_masked_container "$2"
       ;;
     *)
-      echo "usage: $0 {diagnostics|run}" >&2
+      echo "usage: $0 {diagnostics|run IMAGE}" >&2
       exit 2
       ;;
   esac

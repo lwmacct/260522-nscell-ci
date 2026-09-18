@@ -95,43 +95,10 @@ __check_thermal_mask_environment() {
 
 __check_nested_thermal_mask() {
   local _name="$1"
+  local _image="$2"
 
-  __log "checking deterministic nested runc thermal mask"
-  docker exec "$_name" nscell-ci-docker-in-docker-thermal-mask run
-}
-
-__check_default_profile_thermal_mask_denied() {
-  local _name="${_docker_in_docker_name}-thermal-default"
-  local _output _status
-
-  __log "checking default profile thermal mask denial"
-  docker rm -f "$_name" >/dev/null 2>&1 || true
-  set +e
-  _output="$(
-    docker run --rm \
-      --name "$_name" \
-      --hostname "$_name" \
-      --runtime nscell \
-      --cgroupns=private \
-      --annotation "io.backend.security.profile=default" \
-      --label "io.backend.security.profile=default" \
-      --entrypoint sh \
-      "$_docker_in_docker_image" \
-      -c 'exec nscell-ci-docker-in-docker-thermal-mask run' 2>&1
-  )"
-  _status=$?
-  set -e
-  printf '%s\n' "$_output"
-
-  if [[ "$_status" -eq 0 ]]; then
-    echo "default profile unexpectedly allowed nested runtime thermal mask" >&2
-    return 1
-  fi
-  if [[ "$_output" != *thermal_throttle* ]]; then
-    echo "default profile denial did not identify thermal_throttle" >&2
-    return 1
-  fi
-  echo "default-profile-thermal-mask-denied"
+  __log "checking deterministic Docker thermal mask"
+  docker exec "$_name" nscell-ci-docker-in-docker-thermal-mask run "$_image"
 }
 
 __main() {
@@ -170,8 +137,6 @@ __main() {
   __wait_for_inner_docker "$_docker_in_docker_name"
   docker exec "$_docker_in_docker_name" nscell-ci-docker-in-docker-smoke
   __check_thermal_mask_environment "$_docker_in_docker_name"
-  __check_nested_thermal_mask "$_docker_in_docker_name"
-  __check_default_profile_thermal_mask_denied
 
   __log "checking host docker top"
   docker top "$_docker_in_docker_name" >/dev/null
@@ -189,6 +154,7 @@ __main() {
   __log "checking inner nginx with docker load cache"
   __wait_for_inner_docker "$_docker_in_docker_name"
   __load_image_into_docker_container "$_docker_in_docker_name" "$_inner_nginx_image"
+  __check_nested_thermal_mask "$_docker_in_docker_name" "$_inner_nginx_image"
   docker exec "$_docker_in_docker_name" sh -lc "docker rm -f nginx >/dev/null 2>&1 || true"
   docker exec "$_docker_in_docker_name" sh -lc "docker run -d -p 80:80 --name=nginx '$_inner_nginx_image' >/dev/null"
   docker exec "$_docker_in_docker_name" sh -lc 'docker ps --filter name=nginx --format "inner-nginx {{.Status}} {{.Ports}}"'
