@@ -144,6 +144,7 @@ __main() {
 			roundtripRate: $_rate,
 			daemonCpuSeconds: $_cpu_seconds,
 			daemonCpuCores: $_daemon_cores,
+			daemonUsPerRoundtrip: (if $_replies > 0 then $_cpu_seconds * 1000000 / $_replies else 0 end),
 			usPerRoundtrip: $_us_per_roundtrip,
 			fuseCpuCoresEstimate: $_fuse_cores,
 			fuseShareEstimate: $_share,
@@ -169,6 +170,7 @@ __main() {
 	jq -r '
 		"fuse-cost-attribution window=\(.windowSeconds)s replies=\(.replies) rate=\(.roundtripRate | . * 100 | round / 100)/s",
 		"  daemon CPU: \(.daemonCpuSeconds | . * 1000 | round / 1000)s = \(.daemonCpuCores * 100 | round / 100) cores",
+		"  daemon CPU per round trip (measured, model free): \(.daemonUsPerRoundtrip | . * 10 | round / 10) us",
 		"  FUSE estimate: \(.usPerRoundtrip) us/roundtrip = \(.fuseCpuCoresEstimate * 1000 | round / 1000) cores",
 		"  estimated FUSE share of daemon CPU: \(.fuseShareEstimate * 1000 | round / 10)%",
 		"  payload maxima: request=\(.requestBytesMax)B reply=\(.replyBytesMax)B"
