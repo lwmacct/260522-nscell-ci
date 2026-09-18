@@ -25,7 +25,7 @@ default; set `grouping=bundled` to reuse a VM for compatible lightweight targets
 | `daemon-crash-recovery` | crash-time persistent state and recovery |
 | `daemon-dial-retry` | control connection retry behavior |
 | `daemon-fail-stop` | fail-stop cleanup and daemon readiness |
-| `docker-in-docker` | nested Docker daemon and inner container lifecycle with host-provided `thermal_throttle` sysfs coverage |
+| `docker-in-docker` | nested Docker daemon and inner container lifecycle |
 | `fuse-copy-file-range` | FUSE data-path behavior |
 | `fuse-request-timeout` | FUSE request timeout and cancellation |
 | `kernel-capability-smoke` | Linux 7 native ABI diagnostic set |

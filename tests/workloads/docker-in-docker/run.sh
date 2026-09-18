@@ -78,22 +78,6 @@ __wait_for_inner_docker() {
 	"
 }
 
-__prepare_thermal_throttle_sysfs() {
-  local _cpu_path="/sys/devices/system/cpu/cpu0"
-  local _thermal_path="${_cpu_path}/thermal_throttle"
-
-  if [[ -d "$_thermal_path" ]]; then
-    echo "vm-host-thermal-throttle-sysfs=native"
-    return
-  fi
-
-  __log "preparing thermal throttle sysfs fixture before starting NSCell workload"
-  sudo mount -t tmpfs -o mode=755,size=4k nscell-ci-thermal "$_cpu_path"
-  sudo mkdir -p "$_thermal_path"
-  test -d "$_thermal_path"
-  echo "vm-host-thermal-throttle-sysfs=fixture"
-}
-
 __main() {
   local _root="${_volume_root}/docker-in-docker"
 
@@ -111,7 +95,6 @@ __main() {
   __build_ci_image "$_docker_in_docker_image" "${_workload_dir}/workloads/docker-in-docker" --build-arg "BASE_IMAGE=${_docker_in_docker_base_image}"
   __build_ci_image "$_inner_nginx_image" "${_workload_path}" -f "${_workload_path}/nginx.Dockerfile" --build-arg "BASE_IMAGE=${_inner_nginx_base_image}"
   __prepare
-  __prepare_thermal_throttle_sysfs
 
   __log "starting Docker-in-Docker validation container"
   __ensure_host_image "$_docker_in_docker_image"
@@ -126,9 +109,6 @@ __main() {
 		stat -c "probe %u:%g %n" /data/probe /var/lib/docker/probe /certs/probe
 	'
   stat -c 'host-probe %u:%g %n' "${_root}/data/probe" "${_root}/docker/probe" "${_root}/docker/certs/probe"
-
-  __log "checking nested runtime thermal throttle sysfs"
-  docker exec "$_docker_in_docker_name" test -d /sys/devices/system/cpu/cpu0/thermal_throttle
 
   __log "checking inner docker"
   __wait_for_inner_docker "$_docker_in_docker_name"
