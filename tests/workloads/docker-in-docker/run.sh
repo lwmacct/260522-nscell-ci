@@ -95,9 +95,10 @@ __check_thermal_mask_environment() {
 
 __check_nested_thermal_mask() {
   local _name="$1"
+  local _image="$2"
 
-  __log "checking deterministic nested runtime thermal mask"
-  docker exec "$_name" nscell-ci-docker-in-docker-thermal-mask run
+  __log "checking deterministic Docker thermal mask"
+  docker exec "$_name" nscell-ci-docker-in-docker-thermal-mask run "$_image"
 }
 
 __main() {
@@ -153,6 +154,7 @@ __main() {
   __log "checking inner nginx with docker load cache"
   __wait_for_inner_docker "$_docker_in_docker_name"
   __load_image_into_docker_container "$_docker_in_docker_name" "$_inner_nginx_image"
+  __check_nested_thermal_mask "$_docker_in_docker_name" "$_inner_nginx_image"
   __check_nested_thermal_mask "$_docker_in_docker_name"
   docker exec "$_docker_in_docker_name" sh -lc "docker rm -f nginx >/dev/null 2>&1 || true"
   docker exec "$_docker_in_docker_name" sh -lc "docker run -d -p 80:80 --name=nginx '$_inner_nginx_image' >/dev/null"
