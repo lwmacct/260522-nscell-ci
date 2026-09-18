@@ -13,6 +13,7 @@ _share_dir="${RUNNER_TEMP:-/tmp}/test-vm-share-${_resource_id}"
 _exec_timeout="${NSCELL_CLEANUP_EXEC_TIMEOUT:-45s}"
 _pull_timeout="${NSCELL_CLEANUP_PULL_TIMEOUT:-15s}"
 _delete_timeout="${NSCELL_CLEANUP_DELETE_TIMEOUT:-30s}"
+_diagnostic_command_timeout="${NSCELL_CLEANUP_DIAGNOSTIC_COMMAND_TIMEOUT:-5s}"
 
 __bounded() {
   local _duration="$1"
@@ -31,8 +32,26 @@ __pull_guest_file() {
 
 __collect_guest_logs() {
   mkdir -p "${_log_dir}"
+
+  __pull_guest_file /var/log/nscell-daemon.log "${_log_dir}/nscell-daemon.log"
+  __pull_guest_file /var/log/nscell-runtime-invocations.log \
+    "${_log_dir}/nscell-runtime-invocations.log"
+  __pull_guest_file /var/log/nscell-runtime.log "${_log_dir}/nscell-runtime.log"
+  __pull_guest_file /var/lib/nscell/state/events.log "${_log_dir}/nscell-state-events.log"
+  if [[ -f "${_log_dir}/nscell-state-events.log" ]]; then
+    sudo chown "$(id -u):$(id -g)" "${_log_dir}/nscell-state-events.log"
+    chmod 0644 "${_log_dir}/nscell-state-events.log"
+  fi
+
   # shellcheck disable=SC2024 # The runner user owns the diagnostics destination.
-  __bounded "${_exec_timeout}" sudo incus exec "${_vm_name}" -- bash -euo pipefail -c '
+  __bounded "${_exec_timeout}" sudo incus exec "${_vm_name}" -- env \
+    NSCELL_CLEANUP_DIAGNOSTIC_COMMAND_TIMEOUT="${_diagnostic_command_timeout}" \
+    bash -euo pipefail -c '
+    __guest_bounded() {
+      timeout --signal=TERM --kill-after=2s \
+        "${NSCELL_CLEANUP_DIAGNOSTIC_COMMAND_TIMEOUT:?}" "$@"
+    }
+
     {
       uname -a
       cat /etc/test-vm-profile || true
@@ -44,14 +63,14 @@ __collect_guest_logs() {
       findmnt -T /opt/nscell-ci || true
       ls -ld /opt/nscell-ci || true
       ls -l /opt/nscell-ci/scripts/ci.sh || true
-      docker version || true
+      __guest_bounded docker version || true
       oras version || true
       systemctl --no-pager --full status docker.service nscell-daemon.service || true
       systemctl cat nscell-daemon.service || true
-      nscell daemon gate status || true
-      docker info || true
-      docker ps -a || true
-      docker images || true
+      __guest_bounded nscell daemon gate status || true
+      __guest_bounded docker info || true
+      __guest_bounded docker ps -a || true
+      __guest_bounded docker images || true
       systemctl --no-pager --full status incus-agent.service || true
       journalctl --no-pager -u incus-agent.service || true
       journalctl --no-pager -u docker.service -u nscell-daemon.service || true
@@ -60,15 +79,6 @@ __collect_guest_logs() {
     } 2>&1
     test -f /var/log/nscell-daemon.log && cat /var/log/nscell-daemon.log || true
   ' >"${_log_dir}/guest-diagnostics.log" 2>&1 || true
-  __pull_guest_file /var/log/nscell-daemon.log "${_log_dir}/nscell-daemon.log"
-  __pull_guest_file /var/log/nscell-runtime-invocations.log \
-    "${_log_dir}/nscell-runtime-invocations.log"
-  __pull_guest_file /var/log/nscell-runtime.log "${_log_dir}/nscell-runtime.log"
-  __pull_guest_file /var/lib/nscell/state/events.log "${_log_dir}/nscell-state-events.log"
-  if [[ -f "${_log_dir}/nscell-state-events.log" ]]; then
-    sudo chown "$(id -u):$(id -g)" "${_log_dir}/nscell-state-events.log"
-    chmod 0644 "${_log_dir}/nscell-state-events.log"
-  fi
   if __bounded "${_pull_timeout}" sudo incus exec "${_vm_name}" -- \
     test -d /data/nscell/runs >/dev/null 2>&1; then
     install -d -m 0755 "${_log_dir}/run-logs"
