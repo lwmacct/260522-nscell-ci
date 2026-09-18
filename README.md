@@ -20,12 +20,10 @@ workload flow live in this repository under `scripts/ci.sh` and `tests/`.
 
 All runtime workloads are stored in `tests/workloads/`. `tests/manifest.json`
 is the single catalog for VM availability, the `smoke`, `gate`, and `full`
-suites, target timeouts, and compatible VM target groups. The release gate uses
-bundled grouping: targets marked with the same group share one runner, VM,
-runtime installation, and diagnostics artifact, while daemon-mutating and heavy
-workloads remain isolated. Manual `Test workloads in VM` runs default to one
-target per VM; selecting explicit `targets` keeps that isolated debugging
-behavior unless `grouping=bundled` is explicitly requested.
+suites, target timeouts, and compatible VM target groups. Selecting a suite
+bundles targets that share a group into one runner, VM, runtime installation,
+and diagnostics artifact, while daemon-mutating and heavy workloads remain
+isolated. Selecting explicit `targets` instead runs one target per VM.
 
 Runtime host setup starts from a clean daemon state by default. Storage crash
 recovery tests decode the checksummed `/var/lib/nscell/state/events.log`
@@ -38,15 +36,15 @@ The expensive Ubuntu 26.04 systemd environment is published separately as
 remain under `tests/workloads/systemd-pid1/` and are injected at test time, so
 the published image contains no workload assertions.
 
-`Test release` is the product-facing `workflow_dispatch` entry point and
-defaults to the full `gate` suite without an embedded preflight. Choosing the
-`smoke` suite selects only the standalone `smoke` probe. Explicit targets
-bypass the suite matrix for focused debugging. `Test workloads in VM` remains
-manually dispatchable. Runs, billing, matrix jobs, logs, and artifacts remain
-in this public repository. The test runner fetches the selected
-linux/amd64 image manifest and layers, extracts `/usr/local/bin/nscell`, then
-installs the binary and the
-`nscell-daemon.service` systemd unit.
+`Test workloads in VM` is the entry point for the product release workflow and
+for manual runs. The release workflow passes the immutable digest it just built
+together with a suite and an optional target list, while manual runs may pass a
+tag such as `commit-<commit id>`. Choosing the `smoke` suite selects only the
+standalone `smoke` probe. Explicit targets bypass the suite selection for
+focused debugging. Runs, billing, matrix jobs, logs, and artifacts remain in
+this public repository. The test runner fetches the selected linux/amd64 image
+manifest and layers, extracts `/usr/local/bin/nscell`, then installs the binary
+and the `nscell-daemon.service` systemd unit.
 
 `Check main` validates every direct push to `main`. It always runs repository
 static checks and adds VM smoke coverage when runtime test files or

@@ -1,5 +1,5 @@
 name: Test workloads in VM
-run-name: VM ${{ inputs.suite }} / ${{ inputs.grouping }} / ${{ inputs.image_name }} / ${{ inputs.nscell_image }}
+run-name: VM ${{ inputs.suite }} / ${{ inputs.image_name || 'standard' }} / ${{ inputs.nscell_image }}
 
 on:
   workflow_call:
@@ -28,16 +28,11 @@ on:
         required: false
         default: ""
         type: string
-      grouping:
-        description: Keep targets isolated or bundle compatible suite targets in one VM
-        required: false
-        default: isolated
-        type: string
   workflow_dispatch:
     inputs:
       image_name:
         description: VM image profile name
-        required: true
+        required: false
         default: standard
         type: string
       image_ref:
@@ -63,21 +58,13 @@ on:
         required: false
         default: ""
         type: string
-      grouping:
-        description: Keep targets isolated or bundle compatible targets in one VM
-        required: false
-        default: isolated
-        type: choice
-        options:
-          - isolated
-          - bundled
 
 permissions:
   contents: read
   packages: read
 
 concurrency:
-  group: test-vm-${{ github.ref }}-${{ inputs.image_name }}-${{ inputs.nscell_image }}-${{ inputs.suite }}-${{ inputs.targets || 'manifest' }}-${{ inputs.grouping }}
+  group: test-vm-${{ github.ref }}-${{ inputs.image_name }}-${{ inputs.nscell_image }}-${{ inputs.suite }}-${{ inputs.targets || 'manifest' }}
   cancel-in-progress: true
 
 defaults:
@@ -126,9 +113,9 @@ jobs:
           NSCELL_IMAGE_INPUT: ${{ inputs.nscell_image }}
           TEST_SUITE: ${{ inputs.suite }}
           SELECTED_TARGETS: ${{ inputs.targets }}
-          TEST_GROUPING: ${{ inputs.grouping }}
         run: |
           __main() {
+            local _grouping=isolated
             local _image_ref _matrix _nscell_image_ref _requested_image_ref
             local _requested_nscell_image
 
@@ -158,8 +145,13 @@ jobs:
               echo "unexpected resolved VM image reference: ${_image_ref}" >&2
               return 1
             fi
+            # Explicit targets stay isolated for debuggability; a suite reuses
+            # one VM for targets that share a manifest group.
+            if [[ -z "${SELECTED_TARGETS}" ]]; then
+              _grouping=bundled
+            fi
             _matrix="$(
-              bash tests/manifest.sh select vm "${TEST_SUITE}" "${SELECTED_TARGETS}" "${TEST_GROUPING}"
+              bash tests/manifest.sh select vm "${TEST_SUITE}" "${SELECTED_TARGETS}" "${_grouping}"
             )"
             {
               echo "image_ref=${_image_ref}"
@@ -175,7 +167,7 @@ jobs:
               echo "- Resolved image: \`${_image_ref}\`"
               echo "- Requested NSCell image: \`${_requested_nscell_image}\`"
               echo "- Resolved NSCell image: \`${_nscell_image_ref}\`"
-              echo "- Grouping: \`${TEST_GROUPING}\`"
+              echo "- Grouping: \`${_grouping}\`"
               jq -r '.[] |
                 "- Group: `\(.name)` (timeout: \(.timeout_minutes)m, targets: \(.targets | join(", ")))"
               ' <<<"${_matrix}"

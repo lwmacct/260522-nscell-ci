@@ -5,18 +5,18 @@ owned by the NSCell repository and is not duplicated here.
 
 ## Workflows
 
-- `Test release` is called by the product release workflow with the digest it
-  just built, while manual runs may pass a tag such as `commit-<commit id>`.
-  References are resolved to a digest once during preparation, then it runs the
-  complete `gate` suite on the canonical Ubuntu 26.04 standard VM profile.
-- `Test workloads in VM` is the manual debugging entry point. Choose a suite, or
-  provide explicit target names for focused validation.
-- `Build VM images` creates the Ubuntu 26.04 standard VM artifact used by both
-  runtime workflows.
+- `Test workloads in VM` is the entry point for the product release workflow and
+  for manual runs. The release workflow passes the digest it just built
+  together with a suite and an optional target list, while manual runs may pass
+  a tag such as `commit-<commit id>`. References are resolved to a digest once
+  during preparation, then the selection runs on the canonical Ubuntu 26.04
+  standard VM profile.
+- `Build VM images` creates the Ubuntu 26.04 standard VM artifact used by the
+  runtime workflow.
 
 Suite and target selection is defined by `tests/manifest.json`. Leaving targets
-empty selects the requested suite. Explicit targets run one workload per VM by
-default; set `grouping=bundled` to reuse a VM for compatible lightweight targets.
+empty runs the requested suite and bundles targets that share a manifest group
+into one VM. Explicit targets run one workload per VM.
 
 ## Gate targets
 
