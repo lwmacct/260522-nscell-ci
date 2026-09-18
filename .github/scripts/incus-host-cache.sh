@@ -275,20 +275,32 @@ __manifest_value() {
 }
 
 __validate_archive() {
-	local _layer_file="$1" _member
+	local _layer_file="$1"
 
 	[[ -s "${_layer_file}" ]] || __die "empty host layer"
-	while IFS= read -r _member; do
-		[[ "${_member}" != /* && "${_member}" != *../* ]] ||
-			__die "host layer contains an unsafe member: ${_member}"
-		case "${_member}" in
-			./|./etc|./etc/*|./usr|./usr/*|./lib|./lib/*|./lib64|./lib64/*|./bin|./bin/*|./sbin|./sbin/*|./opt|./opt/*|./var|./var/|./var/cache|./var/cache/|./var/cache/debconf|./var/cache/debconf/*|./var/lib|./var/lib/|./var/lib/*)
-				;;
-			*)
-				__die "host layer contains disallowed member: ${_member}"
-				;;
-		esac
-	done < <(tar --list --file="${_layer_file}")
+	tar --list --file="${_layer_file}" |
+		awk '
+			function fail(reason, member) {
+				printf "incus host cache: host layer contains %s member: %s\n", reason, member > "/dev/stderr"
+				exit 1
+			}
+
+			{
+				member = $0
+				if (member ~ /^\// || member ~ /(^|\/)\.\.(\/|$)/) {
+					fail("an unsafe", member)
+				}
+				if (member == "./" ||
+					member ~ /^\.\/(etc|usr|lib|lib64|bin|sbin|opt)(\/.*)?$/ ||
+					member ~ /^\.\/var\/?$/ ||
+					member ~ /^\.\/var\/(cache|lib)\/?$/ ||
+					member ~ /^\.\/var\/cache\/debconf(\/.*)?$/ ||
+					member ~ /^\.\/var\/lib\/.*$/) {
+					next
+				}
+				fail("a disallowed", member)
+			}
+		'
 }
 
 __restore() {
@@ -297,6 +309,7 @@ __restore() {
 	local _manifest_file="${_cache_dir}/manifest"
 	local _expected_base _actual_base _expected_key _actual_key
 	local _expected_layer _actual_layer _expected_packages _actual_packages
+	local _phase_start
 
 	[[ -s "${_manifest_file}" && -s "${_layer_file}" ]] ||
 		__die "host layer cache is incomplete"
@@ -306,6 +319,7 @@ __restore() {
 	_expected_key="$(__manifest_value "${_manifest_file}" cache_key)"
 	_expected_layer="$(__manifest_value "${_manifest_file}" layer_sha256)"
 	_expected_packages="$(__manifest_value "${_manifest_file}" post_packages_sha256)"
+	_phase_start="$(date +%s)"
 	_actual_base="$(__base_fingerprint)"
 	_actual_key="$(__cache_key)"
 	_actual_layer="$(sha256sum "${_layer_file}" | awk '{print $1}')"
@@ -316,12 +330,21 @@ __restore() {
 		__die "cache key mismatch"
 	[[ "${_actual_layer}" == "${_expected_layer}" ]] ||
 		__die "host layer checksum mismatch"
+	printf 'Verified cache identity and checksum in %ss.\n' \
+		"$(( $(date +%s) - _phase_start ))"
+	_phase_start="$(date +%s)"
 	__validate_archive "${_layer_file}"
+	printf 'Validated archive members in %ss.\n' \
+		"$(( $(date +%s) - _phase_start ))"
 
+	_phase_start="$(date +%s)"
 	sudo tar --extract --incremental --file="${_layer_file}" --directory=/ \
 		--xattrs --acls --selinux --numeric-owner --same-owner \
 		--preserve-permissions \
 		--delay-directory-restore
+	printf 'Extracted host layer in %ss.\n' \
+		"$(( $(date +%s) - _phase_start ))"
+	_phase_start="$(date +%s)"
 	sudo systemd-sysusers >/dev/null
 	sudo systemd-tmpfiles --create >/dev/null
 	sudo ldconfig
@@ -331,6 +354,8 @@ __restore() {
 	sudo dpkg --audit
 	command -v incus >/dev/null || __die "incus command missing after restore"
 	command -v qemu-system-x86_64 >/dev/null || __die "QEMU command missing after restore"
+	printf 'Rebuilt and verified package state in %ss.\n' \
+		"$(( $(date +%s) - _phase_start ))"
 }
 
 __ensure_forward_rule() {
