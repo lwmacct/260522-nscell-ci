@@ -134,6 +134,27 @@ __perf_report() {
 		'
 }
 
+# __perf_open_callers attributes the samples that end in openat(2) to the first
+# userspace frame of their stack, so a cache that still misses shows its caller.
+__perf_open_callers() {
+	local _file="$1"
+
+	sudo perf script -i "${_file}" 2>/dev/null | awk '
+		/^[^ \t]/ {
+			if (_saw_open && _caller != "") { _counts[_caller]++ }
+			_saw_open = 0
+			_caller = ""
+			next
+		}
+		/openat|openFileNolog|hostFileCache/ { _saw_open = 1 }
+		/internal\/[a-z]+\// && _caller == "" { _caller = $NF }
+		END {
+			if (_saw_open && _caller != "") { _counts[_caller]++ }
+			for (_name in _counts) { printf "%d %s\n", _counts[_name], _name }
+		}
+	' | sort -rn | awk 'NR <= 5' || true
+}
+
 __main() {
 	local _after _before _perf_pid _perf_samples _report
 
@@ -206,6 +227,10 @@ __main() {
 				>"${_log_root}/fuse-cost-attribution.perf-dso.txt" 2>/dev/null || true
 			sudo perf report --stdio -i "${_perf_file}" --sort symbol --percent-limit 1 \
 				>"${_log_root}/fuse-cost-attribution.perf-symbol.txt" 2>/dev/null || true
+			sudo perf report --stdio -i "${_perf_file}" --sort symbol --percent-limit 20 \
+				>"${_log_root}/fuse-cost-attribution.perf-open-callers.txt" 2>/dev/null || true
+			__perf_open_callers "${_perf_file}" \
+				>"${_log_root}/fuse-cost-attribution.perf-open-attribution.txt" 2>/dev/null || true
 		fi
 	fi
 
@@ -294,6 +319,8 @@ __main() {
 		printf '\n==> perf top symbols\n'
 		awk '! /^#/ && ! /^$/ && _shown < 12 { print; _shown++ }' \
 			"${_log_root}/fuse-cost-attribution.perf-symbol.txt"
+		printf '\n==> perf open(2) callers\n'
+		cat "${_log_root}/fuse-cost-attribution.perf-open-attribution.txt"
 	fi
 
 	trap - EXIT
