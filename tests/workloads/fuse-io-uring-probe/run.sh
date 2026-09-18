@@ -109,6 +109,7 @@ __run_enabled_probe() {
 	local _deadline=$((SECONDS + 20))
 	local _wrapper_pid
 
+	# shellcheck disable=SC2024 # The redirect target is owned by the workload user.
 	sudo timeout --signal=KILL 20s \
 		nscell daemon host io-uring >"$_enabled_probe_tmp" 2>&1 &
 	_wrapper_pid=$!
