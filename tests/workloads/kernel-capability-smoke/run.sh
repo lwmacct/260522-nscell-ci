@@ -31,7 +31,18 @@ __require_cgroup_v2() {
 }
 
 __require_kernel_interfaces() {
+  local _kernel_config="/boot/config-$(uname -r)"
+
   test -c /dev/fuse
+  test -r "$_kernel_config"
+  grep -q '^CONFIG_FUSE_PASSTHROUGH=y$' "$_kernel_config"
+  sudo nscell daemon host status |
+    jq -e '
+      .version == 3 and
+      .capabilities.fuse == true and
+      .capabilities.fusePassthrough == true and
+      ([.probes[].id] | index("fuse-passthrough") != null)
+    ' >/dev/null
 }
 
 __probe_mount_namespace_apis() {

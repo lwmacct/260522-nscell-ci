@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import errno
 import os
 import re
 import subprocess
@@ -9,6 +10,7 @@ import time
 CGROUP_ROOT = "/sys/fs/cgroup"
 IDLE_USAGE_LIMIT_PERCENT = 10.0
 IDLE_BUSY_TICK_TOLERANCE = 1
+CPU_SYSFS_ROOT = "/sys/devices/system/cpu"
 
 
 def optional_env_int(name):
@@ -110,6 +112,40 @@ def assert_cpu_max_present():
         raise RuntimeError("cpu.max is empty")
 
 
+def assert_cpu_sysfs_passthrough_contract():
+    online_path = os.path.join(CPU_SYSFS_ROOT, "online")
+    for _ in range(32):
+        online = read_text(online_path)
+        if not online:
+            raise RuntimeError(f"{online_path} is empty")
+
+    for entry in os.scandir(CPU_SYSFS_ROOT):
+        if not re.fullmatch(r"cpu[0-9]+", entry.name):
+            continue
+        thermal_path = os.path.join(entry.path, "thermal_throttle")
+        if os.path.lexists(thermal_path):
+            raise RuntimeError(f"hidden CPU thermal path is visible: {thermal_path}")
+
+    direct_thermal_path = os.path.join(CPU_SYSFS_ROOT, "cpu0", "thermal_throttle")
+    try:
+        os.stat(direct_thermal_path)
+    except FileNotFoundError:
+        pass
+    else:
+        raise RuntimeError(f"direct lookup exposed hidden CPU thermal path: {direct_thermal_path}")
+
+    try:
+        fd = os.open(online_path, os.O_WRONLY | os.O_CLOEXEC)
+    except OSError as error:
+        if error.errno not in (errno.EPERM, errno.EACCES, errno.EROFS):
+            raise RuntimeError(f"write-capable CPU sysfs open failed with unexpected errno: {error}") from error
+    else:
+        os.close(fd)
+        raise RuntimeError(f"write-capable CPU sysfs open unexpectedly succeeded: {online_path}")
+
+    print(f"cpu_sysfs_passthrough_path={online_path} reads=32 thermal_hidden=true write_open=denied")
+
+
 def assert_idle_cpu_usage_low():
     first = read_proc_stat_total()
     time.sleep(1.0)
@@ -168,6 +204,7 @@ def main():
     check_idle = os.environ.get("CI_PROCFS_CPU_CHECK_IDLE") == "1"
 
     assert_cpu_max_present()
+    assert_cpu_sysfs_passthrough_contract()
     assert_visible_cpu_count(expected_visible)
     assert_affinity(expected_visible, should_match)
     if check_idle:
