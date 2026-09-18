@@ -132,6 +132,7 @@ __run_enabled_probe() {
 	local _output="$1"
 	local _payload_bytes="$2"
 	local _benchmark_requests="${3:-0}"
+	shift 3 || true
 	local _deadline=$((SECONDS + 20))
 	local _wrapper_pid
 	local -a _arguments=(nscell daemon host io-uring)
@@ -141,6 +142,9 @@ __run_enabled_probe() {
 	fi
 	if [[ "${_benchmark_requests}" != "0" ]]; then
 		_arguments+=(--benchmark-requests "${_benchmark_requests}")
+	fi
+	if (($# > 0)); then
+		_arguments+=("$@")
 	fi
 
 	# shellcheck disable=SC2024 # The redirect target is owned by the workload user.
@@ -330,28 +334,41 @@ __main() {
 	done
 
 	__log "measuring the per-request cost of both transports"
-	for _variant in baseline clients4; do
+	for _variant in baseline clients4 coop defer sqpoll; do
+		case "${_variant}" in
+		clients4)
+			_variant_args=(--benchmark-clients 4)
+			;;
+		coop)
+			_variant_args=(--benchmark-setup coop)
+			;;
+		defer)
+			_variant_args=(--benchmark-setup defer)
+			;;
+		sqpoll)
+			_variant_args=(--benchmark-setup sqpoll)
+			;;
+		*)
+			_variant_args=()
+			;;
+		esac
 		for _round in $(seq 1 "${_fuse_io_uring_probe_benchmark_rounds}"); do
-			case "${_variant}" in
-			clients4)
-				__run_enabled_probe "$_enabled_probe_tmp" 65536 "${_fuse_io_uring_probe_benchmark_requests}" "--benchmark-clients 4"
-				;;
-			*)
-				__run_enabled_probe "$_enabled_probe_tmp" 65536 "${_fuse_io_uring_probe_benchmark_requests}"
-				;;
-			esac
-			jq -e '
-				.benchmark.requests > 0 and
-				(.benchmark.classic | (has("error") | not)) and
-				(.benchmark.ioUring | (has("error") | not))
-			' "$_enabled_probe_tmp" >/dev/null
-			jq -r --arg _round "${_round}" '
-				"transport-benchmark round=\($_round) requests=\(.benchmark.requests) clients=\(.benchmark.clients) entriesPerQueue=\(.benchmark.entriesPerQueue) setupFlags=\(.benchmark.setupFlags)"
+			__run_enabled_probe "$_enabled_probe_tmp" 65536 \
+				"${_fuse_io_uring_probe_benchmark_requests}" "${_variant_args[@]}"
+			jq -e '.benchmark.requests > 0 and (.benchmark.classic | (has("error") | not))' \
+				"$_enabled_probe_tmp" >/dev/null
+			jq -r --arg _variant "${_variant}" --arg _round "${_round}" '
+				"transport-benchmark variant=\($_variant) round=\($_round) requests=\(.benchmark.requests) clients=\(.benchmark.clients) entriesPerQueue=\(.benchmark.entriesPerQueue) setupFlags=\(.benchmark.setupFlags)"
 				+ " classic_us=\(.benchmark.classic.durationUsPerRequest)"
 				+ " classic_syscalls_per_req=\(.benchmark.classic.syscallsPerRequest)"
-				+ " io_uring_us=\(.benchmark.ioUring.durationUsPerRequest)"
-				+ " io_uring_syscalls_per_req=\(.benchmark.ioUring.syscallsPerRequest)"
-				+ " io_uring_enters=\(.benchmark.ioUring.ioUringEnterCalls)"
+				+ (if (.benchmark.ioUring | has("error")) then
+					" io_uring=error:\(.benchmark.ioUring.error)"
+				else
+					" io_uring_us=\(.benchmark.ioUring.durationUsPerRequest)"
+					+ " io_uring_syscalls_per_req=\(.benchmark.ioUring.syscallsPerRequest)"
+					+ " io_uring_enters=\(.benchmark.ioUring.ioUringEnterCalls)"
+					+ " io_uring_reads=\(.benchmark.ioUring.readCalls)"
+				end)
 			' "$_enabled_probe_tmp"
 			sudo install -m 0644 \
 				"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-benchmark-${_variant}-${_round}.json"
