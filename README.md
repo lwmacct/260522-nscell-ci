@@ -50,7 +50,9 @@ installs the binary and the
 
 `Check main` validates every direct push to `main`. It always runs repository
 static checks and adds VM smoke coverage when runtime test files or
-Actions change. This repository does not use a pull-request workflow.
+Actions change. The smoke run pulls `ghcr.io/lwmacct/260522-nscell:latest`,
+so CI changes are always exercised against the current released NSCell image.
+This repository does not use a pull-request workflow.
 
 The dedicated Ubuntu VM image and its nested Incus validation workflows are
 documented in [`docs/nscell-vm.md`](docs/nscell-vm.md).

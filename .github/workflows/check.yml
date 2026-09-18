@@ -58,7 +58,7 @@ jobs:
     name: Select smoke coverage
     runs-on: ubuntu-26.04
     outputs:
-      nscell_image: ghcr.io/lwmacct/260522-nscell:main-validated
+      nscell_image: ghcr.io/lwmacct/260522-nscell:latest
       runtime: ${{ steps.paths.outputs.runtime }}
     steps:
       - name: Checkout repository
