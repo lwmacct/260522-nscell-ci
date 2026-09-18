@@ -72,6 +72,29 @@ __fuse_mounts() {
 	awk '$0 ~ / - fuse(\.[^ ]+)? / { print }' /proc/self/mountinfo
 }
 
+__fuse_connection_count() {
+	sudo find /sys/fs/fuse/connections -mindepth 1 -maxdepth 1 | wc -l
+}
+
+__assert_no_probe_residue() {
+	local _stage="$1"
+
+	if [[ "$(__fuse_connection_count)" != "$_fuse_connections_before" ]]; then
+		echo "io_uring probe left FUSE connections behind after ${_stage}" >&2
+		sudo ls -l /sys/fs/fuse/connections >&2 || true
+		return 1
+	fi
+	if [[ "$(__fuse_mounts)" != "$_mounts_before" ]]; then
+		echo "io_uring probe left a FUSE mount behind after ${_stage}" >&2
+		return 1
+	fi
+	if [[ "$(pgrep -cx nscell)" != "$_nscell_processes_before" ]]; then
+		echo "io_uring probe left an nscell process behind after ${_stage}" >&2
+		pgrep -ax nscell >&2 || true
+		return 1
+	fi
+}
+
 __capture_probe_state() {
 	local _pid
 
@@ -210,7 +233,7 @@ __assert_inventory() {
 
 __main() {
 	local _config_value _daemon_fds_before _daemon_pid _disabled_value
-	local _enabled_value _mounts_before _original_enable_value _release
+	local _enabled_value _original_enable_value _release
 
 	if [[ "${1:-}" == "cleanup" ]]; then
 		__cleanup
@@ -231,6 +254,8 @@ __main() {
 	fi
 	_daemon_fds_before="$(sudo find "/proc/${_daemon_pid}/fd" -mindepth 1 -maxdepth 1 | wc -l)"
 	_mounts_before="$(__fuse_mounts)"
+	_fuse_connections_before="$(__fuse_connection_count)"
+	_nscell_processes_before="$(pgrep -cx nscell)"
 
 	_release="$(uname -r)"
 	_config_value="$(__kernel_config_value)"
@@ -286,6 +311,15 @@ __main() {
 			sudo install -m 0644 \
 				"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-probe-enabled.json"
 		fi
+		__assert_no_probe_residue "payload ${_payload_bytes}"
+	done
+
+	__log "checking for probe residue across ${_fuse_io_uring_probe_iterations} runs"
+	for _iteration in $(seq 1 "${_fuse_io_uring_probe_iterations}"); do
+		__run_enabled_probe "$_enabled_probe_tmp" 65536
+		jq -e '.transportProbe == "passed" and .transport.teardown == true' \
+			"$_enabled_probe_tmp" >/dev/null
+		__assert_no_probe_residue "iteration ${_iteration}"
 	done
 
 	__restore_fuse_io_uring
