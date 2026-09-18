@@ -19,10 +19,10 @@ exact public NSCell OCI image reference, fetches its AMD64 layers with ORAS,
 and installs the extracted binary without guest registry credentials.
 
 The standard image keeps `fuse.enable_uring` at its kernel default of `N`. The
-full-suite-only `fuse-io-uring-probe` workload first validates that disabled
-baseline, then explicitly enables the parameter only inside its isolated guest,
-runs the bounded transport probe, and restores the original value. The outer
-runner and production transport are never changed.
+explicit-selection-only `fuse-io-uring-probe` workload first validates that
+disabled baseline, then explicitly enables the parameter only inside its
+isolated guest, runs the bounded transport probe, and restores the original
+value. The outer runner and production transport are never changed.
 
 The profiles intentionally omit a guest compiler toolchain. Runtime workloads
 must not depend on building probes inside the guest; the staged plan for a
@@ -48,11 +48,13 @@ The artifact contains `incus.tar.xz`, `disk.qcow2`, and `SHA256SUMS`.
   stable tags without starting a guest.
 - `Test workloads in VM` is the manual VM coverage entry point. Suite runs use
   manifest-declared workload groups, while explicit target selection defaults
-  to one target per VM for focused debugging. The `smoke`, `gate`, and `full`
-  suites are defined in `tests/manifest.json`.
-- VM `gate` is the complete release check suite. Every workload runs in an
-  isolated guest with the BPF LSM gate enforced in strict mode; the reduced
-  security host execution mode has been removed.
+  to one target per VM for focused debugging. `tests/manifest.json` assigns
+  every target one class, and the `smoke`, `quick`, `runtime`, and `gate`
+  suites are composed from those classes.
+- VM `gate` is the complete release check suite (contract, policy, semantics,
+  and runtime classes). Every workload runs in an isolated guest with the BPF
+  LSM gate enforced in strict mode; the reduced security host execution mode
+  has been removed.
 - The special `smoke` target checks BPF LSM, nscell daemon readiness, Docker
   runtime registration, and one `busybox` container.
 - `kernel-capability-smoke` enforces the Linux 7.0 minimum on the standard

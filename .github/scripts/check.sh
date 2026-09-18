@@ -46,7 +46,7 @@ __check_manifest() {
 
 	bash tests/manifest.sh validate
 	for _grouping in isolated bundled; do
-		for _suite in smoke gate full; do
+		for _suite in smoke quick runtime gate; do
 			_selection="$(
 				bash tests/manifest.sh select vm "${_suite}" "" "${_grouping}"
 			)"
@@ -82,6 +82,40 @@ __check_manifest() {
 			end
 		' --arg grouping "${_grouping}" <<<"${_selection}" >/dev/null
 	done
+
+	__check_suite_composition
+}
+
+__suite_targets() {
+	bash tests/manifest.sh select vm "$1" "" bundled |
+		jq -r '[.[].targets[]] | sort | join(" ")'
+}
+
+__check_suite_composition() {
+	local _all _smoke _quick _runtime _gate _experiment
+
+	_all="$(jq -r '[.targets[].name] | sort | join(" ")' tests/manifest.json)"
+	_smoke="$(__suite_targets smoke)"
+	_quick="$(__suite_targets quick)"
+	_runtime="$(__suite_targets runtime)"
+	_gate="$(__suite_targets gate)"
+	_experiment="$(
+		jq -r '[.targets[] | select(.modes.vm.class == "experiment") | .name] | sort | join(" ")' \
+			tests/manifest.json
+	)"
+
+	jq -en \
+		--arg all "${_all}" \
+		--arg smoke "${_smoke}" \
+		--arg quick "${_quick}" \
+		--arg runtime "${_runtime}" \
+		--arg gate "${_gate}" \
+		--arg experiment "${_experiment}" '
+		def s($value): $value | split(" ") | map(select(length > 0)) | sort;
+		(s($gate) == ((s($quick) + s($runtime)) | unique | sort)) and
+		((s($quick) - s($runtime)) | length == (s($quick) | length)) and
+		((s($all) - (s($smoke) + s($quick) + s($runtime))) == s($experiment))
+	' >/dev/null
 }
 
 __check_python_image_pin() {

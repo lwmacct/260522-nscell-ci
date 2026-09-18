@@ -19,11 +19,15 @@ before the VM matrix starts. The runtime setup, gate check, diagnostics, and
 workload flow live in this repository under `scripts/ci.sh` and `tests/`.
 
 All runtime workloads are stored in `tests/workloads/`. `tests/manifest.json`
-is the single catalog for VM availability, the `smoke`, `gate`, and `full`
-suites, target timeouts, and compatible VM target groups. Selecting a suite
-bundles targets that share a group into one runner, VM, runtime installation,
-and diagnostics artifact, while daemon-mutating and heavy workloads remain
-isolated. Selecting explicit `targets` instead runs one target per VM.
+is the single catalog for VM availability, target classes, target timeouts, and
+compatible VM target groups. Every target declares one class (`preflight`,
+`contract`, `policy`, `semantics`, `runtime`, or `experiment`), and the
+`smoke`, `quick`, `runtime`, and `gate` suites are compositions of those
+classes rather than hand-maintained member lists. The release gate is `gate`.
+Selecting a suite bundles targets that share a group into one runner, VM,
+runtime installation, and diagnostics artifact, while daemon-mutating and heavy
+workloads remain isolated. Selecting explicit `targets` instead runs one target
+per VM; `experiment` targets are only reachable that way.
 
 Runtime host setup starts from a clean daemon state by default. Storage crash
 recovery tests decode the checksummed `/var/lib/nscell/state/events.log`

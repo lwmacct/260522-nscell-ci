@@ -12,22 +12,23 @@ usage: tests/manifest.sh <command>
 commands:
   validate
   workloads
-  select <vm> <smoke|gate|full> [explicit targets]
-  select <vm> <smoke|gate|full> [explicit targets] [isolated|bundled]
+  select <vm> <smoke|quick|runtime|gate> [explicit targets]
+  select <vm> <smoke|quick|runtime|gate> [explicit targets] [isolated|bundled]
 EOF
 }
 
 __validate_schema() {
 	jq -e '
-		.schema_version == 1 and
+		.schema_version == 2 and
 		(.targets | type == "array" and length > 0) and
 		([.targets[].name] | length) == ([.targets[].name] | unique | length) and
 		all(.targets[];
 			(.name | type == "string" and test("^[a-z0-9][a-z0-9-]*$")) and
 			(.kind == "workload" or .kind == "probe") and
 			(.modes | type == "object" and (keys_unsorted == ["vm"])) and
-			(.modes.vm.suites | type == "array" and length > 0) and
-			all(.modes.vm.suites[]; . == "smoke" or . == "gate" or . == "full") and
+			(.modes.vm.class as $class |
+				(["preflight", "contract", "policy", "semantics", "runtime", "experiment"] |
+					index($class)) != null) and
 			(.modes.vm.timeout_minutes | type == "number" and . > 0 and . <= 10 and floor == .) and
 			((.modes.vm.group // null) == null or
 				(.modes.vm.group | type == "string" and test("^[a-z0-9][a-z0-9-]*$")))
@@ -80,12 +81,22 @@ __explicit_targets_json() {
 	printf '%s\n' "${_targets[@]}" | sort -u | jq -R . | jq -sc .
 }
 
+__suite_classes() {
+	case "$1" in
+	smoke) printf '%s\n' preflight ;;
+	quick) printf '%s\n' contract policy semantics ;;
+	runtime) printf '%s\n' runtime ;;
+	gate) printf '%s\n' contract policy semantics runtime ;;
+	esac
+}
+
 __select() {
 	local _mode="$1"
 	local _suite="$2"
 	local _explicit="${3:-}"
 	local _grouping="${4:-isolated}"
-	local _target _targets_json _selection
+	local _target _targets_json _selection _classes_json
+	local -a _classes=()
 
 	case "${_mode}" in
 	vm) ;;
@@ -95,7 +106,7 @@ __select() {
 		;;
 	esac
 	case "${_suite}" in
-	smoke | gate | full) ;;
+	smoke | quick | runtime | gate) ;;
 	*)
 		echo "unsupported test suite: ${_suite}" >&2
 		return 2
@@ -110,9 +121,6 @@ __select() {
 	esac
 
 	__validate
-	if [[ -z "${_explicit}" && "${_suite}" == smoke ]]; then
-		_explicit="smoke"
-	fi
 	if [[ -n "${_explicit}" ]]; then
 		_targets_json="$(__explicit_targets_json "${_explicit}")"
 		while IFS= read -r _target; do
@@ -160,10 +168,12 @@ __select() {
 			_selection="$(jq -c 'map({name, label, targets: [.name], timeout_minutes})' <<<"${_selection}")"
 		fi
 	else
-		_selection="$(jq -c --arg _mode "${_mode}" --arg _suite "${_suite}" '
+		mapfile -t _classes < <(__suite_classes "${_suite}")
+		_classes_json="$(printf '%s\n' "${_classes[@]}" | jq -R . | jq -sc .)"
+		_selection="$(jq -c --arg _mode "${_mode}" --argjson _classes "${_classes_json}" '
 			[.targets[] |
 			select(.modes[$_mode] != null) |
-			select(.modes[$_mode].suites | index($_suite)) |
+			select(.modes[$_mode].class as $class | ($_classes | index($class)) != null) |
 			{
 				name: (.modes[$_mode].group // .name),
 				label: (.modes[$_mode].group // .name),

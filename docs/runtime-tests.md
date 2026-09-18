@@ -14,9 +14,20 @@ owned by the NSCell repository and is not duplicated here.
 - `Build VM images` creates the Ubuntu 26.04 standard VM artifact used by the
   runtime workflow.
 
-Suite and target selection is defined by `tests/manifest.json`. Leaving targets
-empty runs the requested suite and bundles targets that share a manifest group
-into one VM. Explicit targets run one workload per VM.
+Suite and target selection is defined by `tests/manifest.json`, where every
+target declares one class. Suites are compositions of those classes:
+
+| Suite | Classes | Bundled budget |
+| --- | --- | --- |
+| `smoke` | preflight | 1 group, 1 target, 5m |
+| `quick` | contract, policy, semantics | 11 groups, 19 targets, 68m |
+| `runtime` | runtime | 3 groups, 3 targets, 28m |
+| `gate` | quick + runtime | 14 groups, 22 targets, 96m |
+
+`gate` is the release gate. `experiment` targets never run from a suite and
+require an explicit `targets=` selection. Leaving targets empty runs the
+requested suite and bundles targets that share a manifest group into one VM;
+explicit targets run one workload per VM.
 
 ## Gate targets
 
@@ -28,7 +39,7 @@ into one VM. Explicit targets run one workload per VM.
 | `daemon-fail-stop` | fail-stop cleanup and daemon readiness |
 | `docker-in-docker` | nested Docker daemon and inner container lifecycle |
 | `fuse-copy-file-range` | FUSE data-path behavior |
-| `fuse-io-uring-probe` | full-suite-only disabled baseline plus enabled register/commit/teardown probe inside an isolated disposable VM |
+| `fuse-io-uring-probe` | explicit-selection-only disabled baseline plus enabled register/commit/teardown probe inside an isolated disposable VM |
 | `fuse-request-timeout` | FUSE request timeout and cancellation |
 | `kernel-capability-smoke` | Linux 7 native ABI diagnostic set |
 | `kubernetes-k3s` | nested k3s node and inner pod lifecycle |

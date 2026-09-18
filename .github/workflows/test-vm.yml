@@ -19,7 +19,7 @@ on:
         required: true
         type: string
       suite:
-        description: Manifest suite to run
+        description: Suite to run; explicit targets override it
         required: false
         default: gate
         type: string
@@ -45,14 +45,15 @@ on:
         required: true
         type: string
       suite:
-        description: Manifest suite to run
+        description: Suite to run; explicit targets override it
         required: true
         default: gate
         type: choice
         options:
           - smoke
+          - quick
+          - runtime
           - gate
-          - full
       targets:
         description: Optional space-separated targets overriding the suite
         required: false
