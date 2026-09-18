@@ -165,6 +165,7 @@ __tar_excludes() {
 --exclude=./var/cache/fontconfig
 --exclude=./var/lib/apt
 --exclude=./var/lib/incus
+--exclude=./var/lib/incus-lxcfs
 --exclude=./var/lib/systemd
 --exclude=./var/lib/NetworkManager
 --exclude=./var/lib/dhcp
