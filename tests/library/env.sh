@@ -41,6 +41,7 @@ _fuse_request_timeout_name="${NSCELL_CI_FUSE_REQUEST_TIMEOUT_NAME:-nscell-fuse-r
 _fuse_transport_baseline_name="${NSCELL_CI_FUSE_TRANSPORT_BASELINE_NAME:-nscell-fuse-transport-baseline${_workload_resource_id:+-${_workload_resource_id}}}"
 _fuse_io_uring_probe_iterations="${NSCELL_CI_FUSE_IO_URING_PROBE_ITERATIONS:-25}"
 _fuse_io_uring_probe_benchmark_requests="${NSCELL_CI_FUSE_IO_URING_PROBE_BENCHMARK_REQUESTS:-2000}"
+_fuse_io_uring_probe_benchmark_rounds="${NSCELL_CI_FUSE_IO_URING_PROBE_BENCHMARK_ROUNDS:-3}"
 _resource_limits_id="${NSCELL_CI_RESOURCE_LIMITS_ID:-resource-limits${_workload_resource_id:+-${_workload_resource_id}}}"
 _resource_update_id="${NSCELL_CI_RESOURCE_UPDATE_ID:-resource-update${_workload_resource_id:+-${_workload_resource_id}}}"
 _storage_lifecycle_id="${NSCELL_CI_STORAGE_LIFECYCLE_ID:-storage-lifecycle${_workload_resource_id:+-${_workload_resource_id}}}"
