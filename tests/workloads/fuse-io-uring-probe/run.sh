@@ -334,25 +334,26 @@ __main() {
 	done
 
 	__log "measuring the per-request cost of both transports"
-	for _variant in baseline clients4 coop defer sqpoll; do
-		case "${_variant}" in
-		clients4)
-			_variant_args=(--benchmark-clients 4)
-			;;
-		coop)
-			_variant_args=(--benchmark-setup coop)
-			;;
-		defer)
-			_variant_args=(--benchmark-setup defer)
-			;;
-		sqpoll)
-			_variant_args=(--benchmark-setup sqpoll)
-			;;
-		*)
-			_variant_args=()
-			;;
-		esac
-		for _round in $(seq 1 "${_fuse_io_uring_probe_benchmark_rounds}"); do
+	_benchmark_variants=(baseline1 clients4 coop4 defer4)
+	for _round in $(seq 1 "${_fuse_io_uring_probe_benchmark_rounds}"); do
+		for _variant in "${_benchmark_variants[@]}"; do
+			case "${_variant}" in
+			clients4)
+				_variant_args=(--benchmark-clients 4)
+				;;
+			coop4)
+				_variant_args=(--benchmark-clients 4 --benchmark-setup coop)
+				;;
+			defer4)
+				_variant_args=(--benchmark-clients 4 --benchmark-setup defer)
+				;;
+			sqpoll4)
+				_variant_args=(--benchmark-clients 4 --benchmark-setup sqpoll)
+				;;
+			*)
+				_variant_args=()
+				;;
+			esac
 			if ! __run_enabled_probe "$_enabled_probe_tmp" 65536 \
 				"${_fuse_io_uring_probe_benchmark_requests}" "${_variant_args[@]}"; then
 				echo "transport-benchmark variant=${_variant} round=${_round} unavailable" >&2
@@ -370,13 +371,42 @@ __main() {
 					" io_uring_us=\(.benchmark.ioUring.durationUsPerRequest)"
 					+ " io_uring_syscalls_per_req=\(.benchmark.ioUring.syscallsPerRequest)"
 					+ " io_uring_enters=\(.benchmark.ioUring.ioUringEnterCalls)"
-					+ " io_uring_reads=\(.benchmark.ioUring.readCalls)"
 				end)
 			' "$_enabled_probe_tmp"
 			sudo install -m 0644 \
 				"$_enabled_probe_tmp" "${_log_root}/fuse-io-uring-benchmark-${_variant}-${_round}.json"
 			__assert_no_probe_residue "benchmark ${_variant} round ${_round}"
 		done
+	done
+
+	__log "transport benchmark summary (median over ${_fuse_io_uring_probe_benchmark_rounds} rounds)"
+	for _variant in "${_benchmark_variants[@]}"; do
+		_variant_files=("${_log_root}"/fuse-io-uring-benchmark-"${_variant}"-*.json)
+		if [[ ! -e "${_variant_files[0]}" ]]; then
+			echo "transport-summary variant=${_variant} unavailable" >&2
+			continue
+		fi
+		jq -rs --arg _variant "${_variant}" '
+			map(select(.benchmark.ioUring | has("error") | not)) as $_runs
+			| if ($_runs | length) == 0 then
+				"transport-summary variant=\($_variant) io_uring unavailable"
+			else
+				($_runs | map(.benchmark.classic.durationUsPerRequest) | sort) as $_classic
+				| ($_runs | map(.benchmark.ioUring.durationUsPerRequest) | sort) as $_uring
+				| ($_runs | map(.benchmark.ioUring.syscallsPerRequest) | sort) as $_syscalls
+				| ($_classic[($_classic | length) / 2 | floor]) as $_classic_median
+				| ($_uring[($_uring | length) / 2 | floor]) as $_uring_median
+				| "transport-summary variant=\($_variant) rounds=\($_runs | length)"
+				+ " classic_us_median=\($_classic_median * 100 | round / 100)"
+				+ " classic_us_min=\($_classic[0] * 100 | round / 100)"
+				+ " classic_us_max=\($_classic[-1] * 100 | round / 100)"
+				+ " io_uring_us_median=\($_uring_median * 100 | round / 100)"
+				+ " io_uring_us_min=\($_uring[0] * 100 | round / 100)"
+				+ " io_uring_us_max=\($_uring[-1] * 100 | round / 100)"
+				+ " io_uring_syscalls_per_req=\($_syscalls[($_syscalls | length) / 2 | floor] * 1000 | round / 1000)"
+				+ " delta_percent=\((($_classic_median - $_uring_median) / $_classic_median * 1000 | round / 10))"
+			end
+		' "${_variant_files[@]}"
 	done
 
 	__restore_fuse_io_uring
