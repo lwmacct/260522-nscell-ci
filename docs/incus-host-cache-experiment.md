@@ -24,3 +24,7 @@ that the package manager already handles. The cache path was therefore removed.
 Revisit this only if direct APT installation becomes a measured bottleneck, and
 require an end-to-end fresh-runner benchmark to beat the direct install before
 putting an alternative on the production path.
+
+Run `35325781305` validated the restored direct-install path end to end. The
+Incus package install took 24.6 seconds, host initialization took 3.0 seconds,
+and the complete VM smoke job passed in 1 minute 49 seconds.
