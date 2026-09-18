@@ -46,7 +46,7 @@ __write_bundle() {
       .process.args = ["/bin/sh", "-c", "printf \"%s\\n\" nscell-runc-thermal-mask-ok"] |
       .root.readonly = false |
       .mounts = [] |
-      .linux.namespaces = [{"type": "pid"}, {"type": "mount"}] |
+      .linux.namespaces = [{"type": "pid"}, {"type": "mount"}, {"type": "uts"}] |
       .linux.maskedPaths = ["/sys/devices/system/cpu/cpu0/thermal_throttle"] |
       del(.linux.resources)
     ' config.json >config.json.next

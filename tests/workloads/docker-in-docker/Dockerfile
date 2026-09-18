@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=docker.io/library/docker:29.6.2-dind
+ARG BASE_IMAGE=docker.io/library/docker:29.8.1-dind
 FROM ${BASE_IMAGE}
 
 RUN apk add --no-cache jq

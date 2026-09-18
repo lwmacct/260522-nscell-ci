@@ -52,7 +52,7 @@ _docker_in_docker_name="${NSCELL_CI_DOCKER_IN_DOCKER_NAME:-nscell-docker-in-dock
 _shared_netns_primary_name="${NSCELL_CI_SHARED_NETNS_PRIMARY_NAME:-nscell-shared-netns-primary${_workload_resource_id:+-${_workload_resource_id}}}"
 _shared_netns_secondary_name="${NSCELL_CI_SHARED_NETNS_SECONDARY_NAME:-nscell-shared-netns-secondary${_workload_resource_id:+-${_workload_resource_id}}}"
 _docker_in_docker_network="${NSCELL_CI_DOCKER_IN_DOCKER_NETWORK:-nscell-docker-in-docker${_workload_resource_id:+-${_workload_resource_id}}}"
-_docker_in_docker_base_image="${NSCELL_CI_DOCKER_IN_DOCKER_BASE_IMAGE:-docker.io/library/docker:29.6.2-dind}"
+_docker_in_docker_base_image="${NSCELL_CI_DOCKER_IN_DOCKER_BASE_IMAGE:-docker.io/library/docker:29.8.1-dind}"
 _docker_in_docker_image="${NSCELL_CI_DOCKER_IN_DOCKER_IMAGE:-$(__image_tag nscell-ci/docker-in-docker latest)}"
 
 _container_security_policy_name="${NSCELL_CI_CONTAINER_SECURITY_POLICY_NAME:-nscell-container-security-policy${_workload_resource_id:+-${_workload_resource_id}}}"
