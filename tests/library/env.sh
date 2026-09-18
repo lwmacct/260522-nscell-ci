@@ -43,7 +43,6 @@ _fuse_io_uring_probe_iterations="${NSCELL_CI_FUSE_IO_URING_PROBE_ITERATIONS:-25}
 _fuse_io_uring_probe_benchmark_requests="${NSCELL_CI_FUSE_IO_URING_PROBE_BENCHMARK_REQUESTS:-4000}"
 _fuse_io_uring_probe_benchmark_rounds="${NSCELL_CI_FUSE_IO_URING_PROBE_BENCHMARK_ROUNDS:-5}"
 _fuse_cost_attribution_name="${NSCELL_CI_FUSE_COST_ATTRIBUTION_NAME:-nscell-fuse-cost-attribution${_workload_resource_id:+-${_workload_resource_id}}}"
-_fuse_cost_us_per_roundtrip="${NSCELL_CI_FUSE_COST_US_PER_ROUNDTRIP:-200}"
 _fuse_cost_rounds="${NSCELL_CI_FUSE_COST_ROUNDS:-3}"
 _fuse_cost_read_rounds="${NSCELL_CI_FUSE_COST_READ_ROUNDS:-600}"
 _resource_limits_id="${NSCELL_CI_RESOURCE_LIMITS_ID:-resource-limits${_workload_resource_id:+-${_workload_resource_id}}}"

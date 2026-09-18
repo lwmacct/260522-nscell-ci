@@ -238,15 +238,12 @@ __main() {
 		--argjson _before "${_before}" \
 		--argjson _after "${_after}" \
 		--arg _perf_samples "${_perf_samples}" \
-		--arg _perf_mode "${_perf_mode}" \
-		--argjson _us_per_roundtrip "${_fuse_cost_us_per_roundtrip}" '
+		--arg _perf_mode "${_perf_mode}" '
 		($_after.timestamp - $_before.timestamp) as $_seconds
 		| ($_after.replies - $_before.replies) as $_replies
 		| ($_after.cpuSeconds - $_before.cpuSeconds) as $_cpu_seconds
 		| (if $_seconds > 0 then $_replies / $_seconds else 0 end) as $_rate
 		| (if $_seconds > 0 then $_cpu_seconds / $_seconds else 0 end) as $_daemon_cores
-		| ($_rate * $_us_per_roundtrip / 1000000) as $_fuse_cores
-		| (if $_daemon_cores > 0 then $_fuse_cores / $_daemon_cores else 0 end) as $_share
 		| ($_perf_samples | split(" ")) as $_perf_parts
 		| (if $_perf_samples == "unavailable" then "unavailable" else "ok" end) as $_perf_status
 		| (if $_perf_status == "ok" then ($_perf_parts[0] | tonumber) else 0 end) as $_perf_total
@@ -259,9 +256,6 @@ __main() {
 			daemonCpuSeconds: $_cpu_seconds,
 			daemonCpuCores: $_daemon_cores,
 			daemonUsPerRoundtrip: (if $_replies > 0 then $_cpu_seconds * 1000000 / $_replies else 0 end),
-			usPerRoundtrip: $_us_per_roundtrip,
-			fuseCpuCoresEstimate: $_fuse_cores,
-			fuseShareEstimate: $_share,
 			replyBytesTotal: ($_after.replyBytes - $_before.replyBytes),
 			replyBytesMax: $_after.replyBytesMax,
 			requestBytesMax: $_after.requestBytesMax,
@@ -287,7 +281,6 @@ __main() {
 		.replies > 0 and
 		.requests > 0 and
 		.daemonCpuSeconds >= 0 and
-		.fuseShareEstimate >= 0 and
 		.auditEvents >= 0 and
 		.flushReplies == 0
 	' <<<"${_report}" >/dev/null; then
@@ -304,9 +297,7 @@ __main() {
 	jq -r '
 		"fuse-cost-attribution window=\(.windowSeconds)s replies=\(.replies) rate=\(.roundtripRate | . * 100 | round / 100)/s",
 		"  daemon CPU: \(.daemonCpuSeconds | . * 1000 | round / 1000)s = \(.daemonCpuCores * 100 | round / 100) cores",
-		"  daemon CPU per round trip (measured, model free): \(.daemonUsPerRoundtrip | . * 10 | round / 10) us",
-		"  FUSE estimate: \(.usPerRoundtrip) us/roundtrip = \(.fuseCpuCoresEstimate * 1000 | round / 1000) cores",
-		"  estimated FUSE share of daemon CPU: \(.fuseShareEstimate * 1000 | round / 10)%",
+		"  daemon CPU per round trip (measured, model free; upper bound, it also carries lifecycle and audit work): \(.daemonUsPerRoundtrip | . * 10 | round / 10) us",
 		"  top opcodes: \(.opcodeDeltas | to_entries | sort_by(-.value) | .[0:5] | map("\(.key)=\(.value)") | join(", "))",
 		"  close-time FLUSH replies: \(.flushReplies) (read-only opens answer FOPEN_NOFLUSH, so this must stay 0)",
 		"  BPF gate audit events in window: \(.auditEvents) (per FUSE round trip: \(if .replies > 0 then (.auditEvents / .replies * 100 | round / 100) else 0 end))",
