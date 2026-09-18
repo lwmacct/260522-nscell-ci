@@ -278,7 +278,8 @@ __main() {
 				| map({key: ., value: (($_after_opcodes[.] // 0) - ($_before_opcodes[.] // 0))})
 				| map(select(.value > 0))
 				| from_entries
-			)
+			),
+			flushReplies: ((($_after.opcodes // {}).flush // 0) - (($_before.opcodes // {}).flush // 0))
 		}')"
 
 	if ! jq -e '
@@ -287,9 +288,13 @@ __main() {
 		.requests > 0 and
 		.daemonCpuSeconds >= 0 and
 		.fuseShareEstimate >= 0 and
-		.auditEvents >= 0
+		.auditEvents >= 0 and
+		.flushReplies == 0
 	' <<<"${_report}" >/dev/null; then
 		echo "implausible FUSE cost window: ${_report}" >&2
+		if [[ "$(jq -r '.flushReplies' <<<"${_report}")" != "0" ]]; then
+			echo "the read-only window produced FUSE_FLUSH replies; the FOPEN_NOFLUSH elision regressed" >&2
+		fi
 		return 1
 	fi
 
@@ -303,6 +308,7 @@ __main() {
 		"  FUSE estimate: \(.usPerRoundtrip) us/roundtrip = \(.fuseCpuCoresEstimate * 1000 | round / 1000) cores",
 		"  estimated FUSE share of daemon CPU: \(.fuseShareEstimate * 1000 | round / 10)%",
 		"  top opcodes: \(.opcodeDeltas | to_entries | sort_by(-.value) | .[0:5] | map("\(.key)=\(.value)") | join(", "))",
+		"  close-time FLUSH replies: \(.flushReplies) (read-only opens answer FOPEN_NOFLUSH, so this must stay 0)",
 		"  BPF gate audit events in window: \(.auditEvents) (per FUSE round trip: \(if .replies > 0 then (.auditEvents / .replies * 100 | round / 100) else 0 end))",
 		(if .perfStatus == "ok" then
 			"  perf attribution (\(.perfMode)): \(.perfFuseSamples)/\(.perfSamples) samples in FUSE frames = \(.perfFuseShare * 1000 | round / 10)%"
