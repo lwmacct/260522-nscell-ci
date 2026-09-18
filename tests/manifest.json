@@ -11,6 +11,7 @@
     {"name":"oci-lifecycle","kind":"workload","modes":{"vm":{"suites":["smoke","gate","full"],"timeout_minutes":5,"group":"light"}}},
     {"name":"oci-mount-semantics","kind":"workload","modes":{"vm":{"suites":["gate","full"],"timeout_minutes":4,"group":"light"}}},
     {"name":"fuse-copy-file-range","kind":"workload","modes":{"vm":{"suites":["smoke","gate","full"],"timeout_minutes":6,"group":"light"}}},
+    {"name":"fuse-io-uring-probe","kind":"workload","modes":{"vm":{"suites":["full"],"timeout_minutes":5}}},
     {"name":"fuse-request-timeout","kind":"workload","modes":{"vm":{"suites":["gate","full"],"timeout_minutes":5}}},
     {"name":"kernel-capability-smoke","kind":"workload","modes":{"vm":{"suites":["smoke","gate","full"],"timeout_minutes":5,"group":"light"}}},
     {"name":"new-mount-api-deny","kind":"workload","modes":{"vm":{"suites":["smoke","gate","full"],"timeout_minutes":6}}},
