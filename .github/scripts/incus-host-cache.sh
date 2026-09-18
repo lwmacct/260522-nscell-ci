@@ -338,7 +338,10 @@ __restore() {
 		"$(( $(date +%s) - _phase_start ))"
 
 	_phase_start="$(date +%s)"
-	sudo tar --extract --incremental --file="${_layer_file}" --directory=/ \
+	# This archive is an overlay on an exact runner fingerprint. Do not enable
+	# GNU incremental restore here: its dumpdir purge semantics traverse the
+	# entire base tree instead of simply replacing the captured differences.
+	sudo tar --extract --file="${_layer_file}" --directory=/ \
 		--xattrs --acls --selinux --numeric-owner --same-owner \
 		--preserve-permissions \
 		--delay-directory-restore
