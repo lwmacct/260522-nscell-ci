@@ -13,7 +13,9 @@ __fail() {
 }
 
 __assert_output() {
-	local _label="$1" _want="$2" _got="$3"
+	_label="$1"
+	_want="$2"
+	_got="$3"
 	if [ "$_got" != "$_want" ]; then
 		__fail "${_label}: got '${_got}', want '${_want}'"
 	fi
@@ -21,7 +23,7 @@ __assert_output() {
 }
 
 __assert_refused() {
-	local _label="$1"
+	_label="$1"
 	shift
 	if "$@" >"/tmp/dind-refused.out" 2>&1; then
 		__fail "${_label} was allowed"
@@ -35,10 +37,12 @@ __assert_refused() {
 # It deliberately runs no mount(8). A nested mount(8) of this image goes through
 # the new mount API, which NSCell answers with a capability proxy fd; that path is
 # outside what this workload asserts.
+# shellcheck disable=SC2016 # The probe is a script for the inner shell and must not expand here.
 __privileged_probe='_eff=$(tr -d " \t" </proc/self/status | grep "^CapEff:" | cut -d: -f2); [ "$(( 0x${_eff} & 0x200000 ))" -ne 0 ] && test -c /dev/kmsg && printf nscell-dind-privileged-ok'
 
 __check_mounts() {
-	local _image="$1" _src="$2"
+	_image="$1"
+	_src="$2"
 
 	# A directory of this container's world, bound read-only into an inner
 	# container (the `docker run -v <dir>:<dir>` shape).
@@ -89,7 +93,7 @@ __check_mounts() {
 }
 
 __check_build() {
-	local _image="$1" _context
+	_image="$1"
 
 	# A real build with the default (BuildKit) builder. BuildKit's client serves
 	# this container's Dockerfile to the daemon through the buildkit session, which
@@ -106,7 +110,7 @@ __check_build() {
 }
 
 __check_refusals() {
-	local _image="$1"
+	_image="$1"
 
 	# NSCell owns /proc and /sys; they are never bind operands, not even a
 	# container's own view of them.
@@ -131,7 +135,6 @@ __check_refusals() {
 }
 
 __main() {
-	local _driver _image _src
 
 	_driver="$(docker info --format '{{.Driver}}')"
 	if [ "$_driver" != overlay2 ]; then
