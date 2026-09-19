@@ -30,7 +30,7 @@ _volume_root="${NSCELL_CI_VOLUME_ROOT:-${_workload_run_root}/volumes}"
 _log_root="${NSCELL_CI_LOG_ROOT:-${_workload_run_root}/logs}"
 _daemon_log="${NSCELL_DAEMON_LOG:-/var/log/nscell-daemon.log}"
 
-_python_alpine_image="${NSCELL_CI_PYTHON_ALPINE_IMAGE:-docker.io/library/python:3.14-alpine@sha256:016508ba505da24f7139765bc4bb669df4e88eb2f12eeadd571bf2f88d7533df}"
+_python_alpine_image="${NSCELL_CI_PYTHON_ALPINE_IMAGE:-docker.io/library/python:3.14.4-alpine3.23}"
 _oci_base_image="${NSCELL_CI_OCI_BASE_IMAGE:-${_python_alpine_image}}"
 _oci_runtime_root="${NSCELL_CI_OCI_RUNTIME_ROOT:-/run/nscell/runtime}"
 _daemon_fail_stop_docker_name="${NSCELL_CI_DAEMON_FAIL_STOP_DOCKER_NAME:-nscell-daemon-fail-stop-docker${_workload_resource_id:+-${_workload_resource_id}}}"

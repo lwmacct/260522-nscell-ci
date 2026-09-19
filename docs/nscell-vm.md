@@ -10,7 +10,7 @@ One production profile is maintained:
   Ubuntu 26.04 currently boots the `7.0.0-X-generic` kernel series, so this is
   the canonical minimum validation profile as well as the supported current
   workload profile. It also contains the unpacked Docker image
-  store for the pinned Python Alpine base used by repeated runtime workloads.
+  store for the tagged Python Alpine base used by repeated runtime workloads.
 
 The profile contains the Incus VM agent, the Docker runtime stack, FUSE and
 idmap utilities, diagnostics, and a guest GRUB command line that enables the
@@ -71,7 +71,7 @@ and the requested NSCell tag to immutable OCI digests. Only
 run record the exact image it validated and makes a missing or misspelled tag
 fail during matrix preparation instead of after every VM has booted. The run
 summary lists the requested reference and the resolved digest.
-The standard image's Docker store contains the pinned `python:3.14-alpine` image
+The standard image's Docker store contains the `python:3.14.4-alpine3.23` image
 used by Python-derived workloads and by the lightweight OCI-bundle workloads.
 Its minor version tracks the guest's system `python3`, so a probe sees the same
 Python line inside and outside its container. The smoke target runs that

@@ -6,7 +6,7 @@ _vm_name="${VM_NAME:?VM_NAME is required}"
 _test_target="${TEST_TARGET:?TEST_TARGET is required}"
 _test_targets_json="${TEST_TARGETS_JSON:?TEST_TARGETS_JSON is required}"
 _nscell_image="${NSCELL_IMAGE:?NSCELL_IMAGE is required}"
-_oci_base_image="${NSCELL_CI_OCI_BASE_IMAGE:-docker.io/library/python:3.14-alpine@sha256:016508ba505da24f7139765bc4bb669df4e88eb2f12eeadd571bf2f88d7533df}"
+_oci_base_image="${NSCELL_CI_OCI_BASE_IMAGE:-docker.io/library/python:3.14.4-alpine3.23}"
 declare -a _test_targets=()
 
 __main() {

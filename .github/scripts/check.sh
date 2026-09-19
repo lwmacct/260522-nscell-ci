@@ -147,12 +147,18 @@ __check_suite_composition() {
 	' >/dev/null
 }
 
-__check_python_image_pin() {
-	local _references _preset
-	local -a _digests=()
+__check_python_image_tag() {
+	local _expected_image _expected_tag _references _preset
 
+	_expected_image='docker.io/library/python:3.14.4-alpine3.23'
+	_expected_tag='3.14.4-alpine3.23'
+
+	# The tag is the whole contract: the workload Dockerfiles, the runner
+	# default, the cache warm step, and the guest profile marker name the same
+	# Python image. A digest pin is a failure rather than a stronger form of
+	# the same reference, because the preset tracks one floating Alpine line.
 	_references="$(
-		git grep -n -I -E 'python:3\.[0-9]+-alpine' -- \
+		git grep -n -I -E 'python:3\.' -- \
 			'.github/actions/run-vm-workload/run.sh' \
 			'.github/workflows/build-vm-standard.yml' \
 			'tests/library/env.sh' \
@@ -161,31 +167,25 @@ __check_python_image_pin() {
 	[[ -n "${_references}" ]]
 
 	while IFS= read -r _reference; do
-		if [[ ! "${_reference}" =~ @sha256:[0-9a-f]{64} ]]; then
-			echo "unpinned Python base image reference: ${_reference}" >&2
+		if [[ "${_reference}" == *'@sha256:'* ]]; then
+			echo "Python base image must stay tag-referenced: ${_reference}" >&2
+			return 1
+		fi
+		if [[ "${_reference}" != *"${_expected_image}"* ]]; then
+			echo "unexpected Python base image reference: ${_reference}" >&2
 			return 1
 		fi
 	done <<<"${_references}"
 
-	# The profile writes the preloaded digest into the guest marker, and the
-	# warm step pulls the workflow copy of the same reference. Nothing reads
-	# the marker, so a drift here would make the smoke target silently miss
-	# its preloaded image instead of failing.
+	# The profile writes the preloaded tag into the guest marker, and the warm
+	# step pulls the workflow copy of the same reference. Nothing reads the
+	# marker, so a drift here would make the smoke target silently miss its
+	# preloaded image instead of failing.
 	_preset="$(
 		git grep -n -I -E 'PRESET_PYTHON_[0-9]+_ALPINE=' -- images/standard.yaml || true
 	)"
-	if [[ -z "${_preset}" ]]; then
-		echo "standard VM profile does not record the preloaded Python image digest" >&2
-		return 1
-	fi
-	_references="${_references}"$'\n'"${_preset}"
-
-	mapfile -t _digests < <(
-		sed -n 's/.*\(sha256:[0-9a-f]\{64\}\).*/\1/p' <<<"${_references}" |
-			sort -u
-	)
-	if ((${#_digests[@]} != 1)); then
-		echo "Python base image references do not share one digest" >&2
+	if [[ "${_preset}" != *"=${_expected_tag}"* ]]; then
+		echo "standard VM profile does not record the preloaded Python image tag" >&2
 		return 1
 	fi
 }
@@ -245,7 +245,7 @@ __main() {
 	__check_python
 	__check_manifest
 	__check_manifest_naming
-	__check_python_image_pin
+	__check_python_image_tag
 	__check_vm_guest_image_policy
 	__check_retired_gate_mode
 	__check_retired_gate_status_fields
