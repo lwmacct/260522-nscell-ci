@@ -142,12 +142,15 @@ if list_result != -1 or ctypes.get_errno() != 1:
 print("new-mount-api-deny-ok:listmount")
 
 stat_buffer = ctypes.create_string_buffer(4096)
+# Ask for every Linux 7.0 statmount field: a profile without the new mount query
+# API must refuse the call whatever it asks for, not only the fields that
+# existed before.
 stat_request = struct.pack(
     "=IIQQQ",
     32,
     0,
     1,
-    0xFF,
+    0x7FFF,
     namespace_id,
 )
 ctypes.set_errno(0)
@@ -182,7 +185,7 @@ __run_authorized_case() {
   local _target_path="$3"
   local _fs_target_path="$4"
   local _case_output
-  local _expected_output="new-mount-api-${_profile}-ok:proxy-attributes-attach"$'\n'"new-mount-api-${_profile}-ok:fs-context-attach"$'\n'"new-mount-api-${_profile}-ok:thread-handoff"$'\n'"new-mount-api-${_profile}-ok:fork-transfer-denied"$'\n'"new-mount-api-${_profile}-ok:fd-reuse"$'\n'"new-mount-api-${_profile}-ok:multiprocess-same-fd"
+  local _expected_output="new-mount-api-${_profile}-ok:proxy-attributes-attach"$'\n'"new-mount-api-${_profile}-ok:fs-context-attach"$'\n'"new-mount-api-${_profile}-ok:thread-handoff"$'\n'"new-mount-api-${_profile}-ok:fork-transfer-denied"$'\n'"new-mount-api-${_profile}-ok:fd-reuse"$'\n'"new-mount-api-${_profile}-ok:multiprocess-same-fd"$'\n'"new-mount-api-${_profile}-ok:statmount-7-fields"
   local _syscall_name
 
   __cleanup
@@ -720,6 +723,84 @@ process_fds = [int(record[1]) for record in records]
 if process_fds[0] != process_fds[1]:
     raise SystemExit(f"processes received different guest fds: {process_fds!r}")
 print(f"new-mount-api-{profile}-ok:multiprocess-same-fd")
+
+# The daemon answers statmount from its own snapshot, so the Linux 7.0 fields
+# have to come back as real data: the structured option array, the fields the
+# mount actually has, and the kernel mask the daemon supports. Every claimed
+# field must also be filled - a field announced with an empty string is worse
+# than one left out of the mask.
+fields_mask = 0x7FFF
+fields_buffer = ctypes.create_string_buffer(4096)
+ctypes.set_errno(0)
+fields_result = libc.syscall(
+    ctypes.c_long(syscalls["statmount"]),
+    query_request(ids[0], fields_mask, namespace_id),
+    fields_buffer,
+    ctypes.c_size_t(len(fields_buffer)),
+    ctypes.c_uint(0),
+)
+if fields_result == -1:
+    raise SystemExit(f"statmount with the 7.0 fields failed: errno={ctypes.get_errno()}")
+
+fields_raw = fields_buffer.raw
+fields_size, _, fields_answered = struct.unpack_from("=IIQ", fields_raw, 0)
+if fields_answered & ~fields_mask:
+    raise SystemExit(f"statmount answered unrequested fields: mask={fields_answered:#x}")
+if not fields_answered & (1 << 10):
+    raise SystemExit(f"statmount did not answer the option array: mask={fields_answered:#x}")
+if not fields_answered & (1 << 12):
+    raise SystemExit(f"statmount did not answer the supported mask: mask={fields_answered:#x}")
+fields_supported = struct.unpack_from("=Q", fields_raw, 144)[0]
+if fields_supported & fields_mask != fields_mask:
+    raise SystemExit(
+        f"statmount reported supported mask {fields_supported:#x}, want {fields_mask:#x}"
+    )
+
+
+def field_string(offset):
+    if offset == 0:
+        return ""
+    start = 512 + offset
+    if start >= fields_size:
+        raise SystemExit(f"statmount string offset {offset} is outside the result")
+    end = fields_raw.index(b"\0", start)
+    return fields_raw[start:end].decode()
+
+
+def field_strings(offset, count):
+    values = []
+    position = 512 + offset
+    for _ in range(count):
+        end = fields_raw.index(b"\0", position)
+        values.append(fields_raw[position:end].decode())
+        position = end + 1
+    return values
+
+
+if fields_answered & (1 << 9) and not field_string(struct.unpack_from("=I", fields_raw, 124)[0]):
+    raise SystemExit("statmount claimed a filesystem source but did not fill it")
+
+option_count, option_offset = struct.unpack_from("=II", fields_raw, 128)
+if option_count == 0 or not field_strings(option_offset, option_count):
+    raise SystemExit("statmount returned an empty option array")
+
+for label, count_offset, list_offset, bit in (
+    ("subtype", 0, 120, 1 << 8),
+    ("security option array", 136, 140, 1 << 11),
+    ("uid map", 152, 156, 1 << 13),
+    ("gid map", 160, 164, 1 << 14),
+):
+    if not fields_answered & bit:
+        continue
+    if label == "subtype":
+        if not field_string(struct.unpack_from("=I", fields_raw, list_offset)[0]):
+            raise SystemExit("statmount claimed a subtype but did not fill it")
+        continue
+    count, offset = struct.unpack_from("=II", fields_raw, count_offset)
+    if count and len(field_strings(offset, count)) != count:
+        raise SystemExit(f"statmount claimed the {label} but did not fill it")
+
+print(f"new-mount-api-{profile}-ok:statmount-7-fields")
 PY
   )"
   printf 'new-mount-api-authorized-output[%s]=%q\n' "$_profile" "$_case_output"

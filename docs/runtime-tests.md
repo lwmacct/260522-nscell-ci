@@ -47,7 +47,7 @@ listed separately because only an explicit `targets=` selection reaches them.
 | `io-uring-policy` | io_uring task-scoped opcode policy: allowed ring, refused trapped forms, and profiles that stay closed |
 | `kernel-capability-smoke` | Linux 7 native ABI diagnostic set |
 | `kubernetes-k3s` | nested k3s node and inner pod lifecycle |
-| `new-mount-api-deny` | mediated new-mount API policy |
+| `new-mount-api-deny` | mediated new-mount API policy, including the Linux 7.0 statmount fields a permitted profile must receive |
 | `oci-lifecycle` | OCI create/start/exec/kill/delete lifecycle |
 | `oci-mount-semantics` | mount identity, propagation, and visibility |
 | `procfs-cpu` | CPU procfs presentation and cpuset resources |
