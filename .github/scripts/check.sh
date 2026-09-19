@@ -119,11 +119,11 @@ __check_suite_composition() {
 }
 
 __check_python_image_pin() {
-	local _references _digest
+	local _references _preset
 	local -a _digests=()
 
 	_references="$(
-		git grep -n -I 'python:3\.12-alpine' -- \
+		git grep -n -I -E 'python:3\.[0-9]+-alpine' -- \
 			'.github/actions/run-vm-workload/run.sh' \
 			'.github/workflows/build-vm-standard.yml' \
 			'tests/library/env.sh' \
@@ -137,6 +137,19 @@ __check_python_image_pin() {
 			return 1
 		fi
 	done <<<"${_references}"
+
+	# The profile writes the preloaded digest into the guest marker, and the
+	# warm step pulls the workflow copy of the same reference. Nothing reads
+	# the marker, so a drift here would make the smoke target silently miss
+	# its preloaded image instead of failing.
+	_preset="$(
+		git grep -n -I -E 'PRESET_PYTHON_[0-9]+_ALPINE=' -- images/standard.yaml || true
+	)"
+	if [[ -z "${_preset}" ]]; then
+		echo "standard VM profile does not record the preloaded Python image digest" >&2
+		return 1
+	fi
+	_references="${_references}"$'\n'"${_preset}"
 
 	mapfile -t _digests < <(
 		sed -n 's/.*\(sha256:[0-9a-f]\{64\}\).*/\1/p' <<<"${_references}" |
