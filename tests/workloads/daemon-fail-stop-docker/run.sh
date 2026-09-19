@@ -134,7 +134,9 @@ __main() {
     return 1
   fi
 
-  _daemon_log_offset="$(sudo wc -l <"${_daemon_log}")"
+  # The daemon log is root-owned, and a redirect would be performed by this
+  # unprivileged shell, so read the line count through sudo itself.
+  _daemon_log_offset="$(sudo wc -l "${_daemon_log}" | awk '{ print $1 }')"
 
   __log "killing the daemon without running its shutdown reconciliation"
   _daemon_pid="$(__daemon_pid)"

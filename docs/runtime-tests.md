@@ -20,16 +20,19 @@ target declares one class. Suites are compositions of those classes:
 | Suite | Classes | Bundled budget |
 | --- | --- | --- |
 | `smoke` | preflight | 1 group, 1 target, 5m |
-| `quick` | contract, policy, semantics | 11 groups, 19 targets, 68m |
+| `quick` | contract, policy, semantics | 12 groups, 20 targets, 74m |
 | `runtime` | runtime | 3 groups, 3 targets, 28m |
-| `gate` | quick + runtime | 14 groups, 22 targets, 96m |
+| `gate` | quick + runtime | 15 groups, 23 targets, 102m |
 
 `gate` is the release gate. `experiment` targets never run from a suite and
 require an explicit `targets=` selection. Leaving targets empty runs the
 requested suite and bundles targets that share a manifest group into one VM;
 explicit targets run one workload per VM.
 
-## Gate targets
+## Targets
+
+The table lists the targets the `gate` suite composes. `experiment` targets are
+listed separately because only an explicit `targets=` selection reaches them.
 
 | Target | Coverage |
 | --- | --- |
@@ -40,7 +43,6 @@ explicit targets run one workload per VM.
 | `daemon-fail-stop-docker` | fail-stop reap of a container whose runtime state root is the shim's |
 | `docker-in-docker` | nested Docker daemon and inner container lifecycle |
 | `fuse-copy-file-range` | FUSE data-path behavior |
-| `fuse-io-uring-probe` | explicit-selection-only disabled baseline plus enabled register/commit/teardown probe inside an isolated disposable VM |
 | `fuse-request-timeout` | FUSE request timeout and cancellation |
 | `kernel-capability-smoke` | Linux 7 native ABI diagnostic set |
 | `kubernetes-k3s` | nested k3s node and inner pod lifecycle |
@@ -57,6 +59,14 @@ explicit targets run one workload per VM.
 | `storage-crash-boundaries` | checksummed event-log crash boundaries |
 | `storage-lifecycle` | volume creation, synchronization, and destruction |
 | `systemd-pid1` | systemd-managed system container |
+
+## Explicit-selection-only targets
+
+| Target | Coverage |
+| --- | --- |
+| `fuse-cost-attribution` | daemon CPU attributed to FUSE traffic and the virtualized views |
+| `fuse-io-uring-probe` | disabled baseline plus enabled register/commit/teardown probe inside an isolated disposable VM |
+| `fuse-transport-baseline` | classic `/dev/fuse` transport baseline used as the comparison point |
 
 The standalone `smoke` target installs NSCell, checks daemon readiness and the
 BPF gate, registers the Docker runtime, and starts one preloaded Python Alpine

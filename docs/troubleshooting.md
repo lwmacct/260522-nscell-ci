@@ -49,7 +49,7 @@ debug VM after confirming that no NSCell workload or state must be preserved:
 ```bash
 docker ps -aq --filter name='^nscell-' | xargs -r docker rm -f
 systemctl stop nscell-daemon.service
-rm -rf /var/lib/nscell/state /var/lib/nscell/work /run/nscell/runtime
+rm -rf /var/lib/nscell/state /var/lib/nscell/work /run/nscell/runtime /run/nscell/runtime-roots
 systemctl start nscell-daemon.service
 ```
 

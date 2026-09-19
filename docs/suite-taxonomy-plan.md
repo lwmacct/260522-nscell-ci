@@ -1,7 +1,10 @@
 # Workload suite taxonomy plan
 
-Status: approved 2026-09-18. Implementation and public validation follow this
-document; the plan is retired once the suites are live.
+Status: implemented and retired. The class composition, the suite selector and
+the bundled-group rule this plan argued for are live in `tests/manifest.json`
+and `tests/manifest.sh`; the current numbers and the target catalog are in
+[runtime-tests.md](runtime-tests.md). What follows is the record of why the
+taxonomy looks the way it does, not a description of pending work.
 
 ## Problem
 
@@ -21,28 +24,17 @@ what each target actually validates:
 Every target declares exactly one `class`. Suites are class compositions, not
 hand-maintained member lists.
 
-| Class | Meaning | Targets |
-| --- | --- | --- |
-| `preflight` | VM and NSCell liveness | `smoke` |
-| `contract` | Linux 7 host contract | `kernel-capability-smoke` |
-| `policy` | security mediation and deny paths | `container-security-policy`, `new-mount-api-deny`, `seccomp-notify-concurrency` |
-| `semantics` | NSCell API and component behavior | OCI, FUSE, storage, recovery, cgroup, procfs, netns, and daemon targets |
-| `runtime` | real nested runtimes end to end | `docker-in-docker`, `kubernetes-k3s`, `systemd-pid1` |
-| `experiment` | non-blocking probes, never in a suite | `fuse-io-uring-probe` |
+The class names, the suite compositions and each target's class live in
+`tests/manifest.json`; per-suite group, target and budget numbers are kept in
+[runtime-tests.md](runtime-tests.md) so there is one place to read them.
 
-| Suite | Classes | Bundled budget |
-| --- | --- | --- |
-| `smoke` | preflight | 1 group, 1 target, 5m |
-| `quick` | contract + policy + semantics | 11 groups, 19 targets, 68m |
-| `runtime` | runtime | 3 groups, 3 targets, 28m |
-| `gate` | quick + runtime | 14 groups, 22 targets, 96m |
-
-`gate` stays the release gate required by ADR-031 and ADR-033: Linux 7 ABI, OCI
-lifecycle, storage, recovery, cgroup, mount, seccomp, BPF, systemd, nested
-runtime, and Kubernetes coverage. `full` is removed. Its extra coverage either
-enters `gate` (`resource-update`, the only live cgroup-update check, named by
-ADR-031's cgroup coverage) or becomes explicit-only (`fuse-io-uring-probe`,
-an experiment). Experiment targets require an explicit `targets=` selection.
+`gate` stays the release gate the product deployment path requires (the public
+Ubuntu 26.04 standard VM profile; see the NSCell repository's deployment skill):
+Linux 7 ABI, OCI lifecycle, storage, recovery, cgroup, mount, seccomp, BPF,
+systemd, nested runtime, and Kubernetes coverage. `full` is removed. Its extra
+coverage either enters `gate` (`resource-update`, the only live cgroup-update
+check) or becomes explicit-only (`fuse-io-uring-probe`, an experiment).
+Experiment targets require an explicit `targets=` selection.
 
 ## Migration
 
@@ -57,7 +49,7 @@ an experiment). Experiment targets require an explicit `targets=` selection.
    `smoke|quick|runtime|gate`.
 5. NSCell release workflow: suite choices become
    `none|smoke|quick|runtime|gate`; release tags keep running `gate`.
-6. Documentation and ADR-031 wording: the release gate is the `gate` suite
+6. Documentation wording: the release gate is the `gate` suite
    composed of the class lists above.
 
 ## Verification
