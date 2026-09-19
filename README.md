@@ -24,6 +24,9 @@ compatible VM target groups. Every target declares one class (`preflight`,
 `contract`, `policy`, `semantics`, `runtime`, or `experiment`), and the
 `smoke`, `quick`, `runtime`, and `gate` suites are compositions of those
 classes rather than hand-maintained member lists. The release gate is `gate`.
+Target names are lowercase kebab-case (`^[a-z0-9][a-z0-9-]*$`) and match the
+directory under `tests/workloads/`, because the same token is what a
+`targets=` selection passes: `io-uring-policy`, not `io_uring-policy`.
 Selecting a suite bundles targets that share a group into one runner, VM,
 runtime installation, and diagnostics artifact, while daemon-mutating and heavy
 workloads remain isolated. Selecting explicit `targets` instead runs one target

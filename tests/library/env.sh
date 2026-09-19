@@ -34,6 +34,7 @@ _python_alpine_image="${NSCELL_CI_PYTHON_ALPINE_IMAGE:-docker.io/library/python:
 _oci_base_image="${NSCELL_CI_OCI_BASE_IMAGE:-${_python_alpine_image}}"
 _oci_runtime_root="${NSCELL_CI_OCI_RUNTIME_ROOT:-/run/nscell/runtime}"
 _daemon_fail_stop_docker_name="${NSCELL_CI_DAEMON_FAIL_STOP_DOCKER_NAME:-nscell-daemon-fail-stop-docker${_workload_resource_id:+-${_workload_resource_id}}}"
+_io_uring_policy_name="${NSCELL_CI_IO_URING_POLICY_NAME:-nscell-io-uring-policy${_workload_resource_id:+-${_workload_resource_id}}}"
 _oci_lifecycle_id="${NSCELL_CI_OCI_LIFECYCLE_ID:-oci-lifecycle${_workload_resource_id:+-${_workload_resource_id}}}"
 _oci_mount_semantics_id="${NSCELL_CI_OCI_MOUNT_SEMANTICS_ID:-oci-mount-semantics${_workload_resource_id:+-${_workload_resource_id}}}"
 _fuse_copy_file_range_name="${NSCELL_CI_FUSE_COPY_FILE_RANGE_NAME:-nscell-fuse-copy-file-range${_workload_resource_id:+-${_workload_resource_id}}}"

@@ -44,6 +44,7 @@ listed separately because only an explicit `targets=` selection reaches them.
 | `docker-in-docker` | nested Docker daemon and inner container lifecycle |
 | `fuse-copy-file-range` | FUSE data-path behavior |
 | `fuse-request-timeout` | FUSE request timeout and cancellation |
+| `io-uring-policy` | io_uring task-scoped opcode policy: allowed ring, refused trapped forms, and profiles that stay closed |
 | `kernel-capability-smoke` | Linux 7 native ABI diagnostic set |
 | `kubernetes-k3s` | nested k3s node and inner pod lifecycle |
 | `new-mount-api-deny` | mediated new-mount API policy |

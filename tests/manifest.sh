@@ -17,6 +17,46 @@ commands:
 EOF
 }
 
+__report_schema_violations() {
+	local _name_pattern='^[a-z0-9][a-z0-9-]*$'
+	local _classes='["preflight","contract","policy","semantics","runtime","experiment"]'
+
+	jq -r --arg name_pattern "${_name_pattern}" --argjson classes "${_classes}" '
+		def report($what; $names):
+			select(($names | length) > 0) | "manifest \($what): \($names | join(", "))";
+		[
+			report(
+				"target name must match " + $name_pattern + " (lowercase kebab-case, no underscores)";
+				[.targets[] | select((.name | type) != "string" or (.name | test($name_pattern) | not)) | (.name | tostring)]
+			),
+			report(
+				"kind must be workload or probe";
+				[.targets[] | select(.kind != "workload" and .kind != "probe") | (.name | tostring)]
+			),
+			report(
+				"modes must contain exactly vm";
+				[.targets[] | select((.modes | type) != "object" or (.modes | keys_unsorted) != ["vm"]) | (.name | tostring)]
+			),
+			report(
+				"vm class must be one of " + ($classes | join(", "));
+				[.targets[] | select(.modes.vm.class as $class | ($classes | index($class)) == null) | (.name | tostring)]
+			),
+			report(
+				"timeout_minutes must be a whole number in 1..10";
+				[.targets[] | select((.modes.vm.timeout_minutes | type) != "number" or
+					.modes.vm.timeout_minutes <= 0 or .modes.vm.timeout_minutes > 10 or
+					(.modes.vm.timeout_minutes | floor) != .modes.vm.timeout_minutes) | (.name | tostring)]
+			),
+			report(
+				"group must match " + $name_pattern;
+				[.targets[] | select(.modes.vm.group != null and
+					((.modes.vm.group | type) != "string" or (.modes.vm.group | test($name_pattern) | not))) |
+					(.name | tostring)]
+			)
+		] | .[]
+	' "${_manifest}" >&2
+}
+
 __validate_schema() {
 	jq -e '
 		.schema_version == 2 and
@@ -33,7 +73,18 @@ __validate_schema() {
 			((.modes.vm.group // null) == null or
 				(.modes.vm.group | type == "string" and test("^[a-z0-9][a-z0-9-]*$")))
 		)
-	' "${_manifest}" >/dev/null
+	' "${_manifest}" >/dev/null || {
+		# The schema check itself is a single boolean, so say which target broke
+		# which rule instead of leaving the caller with a bare exit status.
+		if jq -e '(.schema_version == 2) and ((.targets | type) == "array")' "${_manifest}" >/dev/null 2>&1; then
+			__report_schema_violations
+			jq -r 'select(([.targets[].name] | length) != ([.targets[].name] | unique | length)) |
+				"manifest target names must be unique"' "${_manifest}" >&2
+		else
+			echo "manifest must declare schema_version 2 and a non-empty targets array" >&2
+		fi
+		return 1
+	}
 }
 
 __validate_workload_files() {
