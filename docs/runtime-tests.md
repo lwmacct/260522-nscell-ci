@@ -52,7 +52,7 @@ listed separately because only an explicit `targets=` selection reaches them.
 | `daemon-fail-stop` | fail-stop cleanup and daemon readiness |
 | `daemon-fail-stop-docker` | fail-stop reap of a container whose runtime state root is the shim's |
 | `docker-in-docker` | nested Docker daemon and inner container lifecycle |
-| `fuse-copy-file-range` | FUSE data-path behavior |
+| `fuse-copy-file-range` | FUSE data-path behavior, including the 64-bit copy opcode and the absence of a legacy fallback |
 | `fuse-request-timeout` | FUSE request timeout and cancellation |
 | `io-uring-policy` | io_uring task-scoped opcode policy: allowed ring, refused trapped forms, and profiles that stay closed |
 | `kernel-capability-smoke` | Linux 7 native ABI diagnostic set |
