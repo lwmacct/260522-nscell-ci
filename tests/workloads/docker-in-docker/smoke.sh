@@ -77,26 +77,28 @@ __check_mounts() {
 	# __check_refusals).
 	__assert_output "privileged" "nscell-dind-privileged-ok" \
 		"$(docker run --rm --privileged "$_image" sh -c "$__privileged_probe")"
+
+	# A nested mount(8) of this image uses the new mount API: NSCell answers the
+	# fs-context with a capability proxy fd, and the caller reads that context's
+	# log. The read has to end instead of blocking, and the tmpfs mount itself has
+	# to be replayed inside the inner container.
+	__assert_output "nested-mount8" "nscell-dind-mount8-ok" \
+		"$(docker run --rm --privileged "$_image" \
+			sh -c 'mkdir -p /probe-mnt8 && mount -t tmpfs -o size=1m tmpfs /probe-mnt8 && \
+				printf nscell-dind-mount8-ok > /probe-mnt8/marker && cat /probe-mnt8/marker')"
 }
 
 __check_build() {
 	local _image="$1" _context
 
-	# A real build: the builder creates a container from this world, runs the step
-	# in it and commits the result.
-	#
-	# DOCKER_BUILDKIT=0 is deliberate. BuildKit's client cannot hand its
-	# Dockerfile to the daemon from inside an nscell container (the session
-	# transfer arrives as 2B and the daemon then reports "failed to read
-	# dockerfile"), and its build executor mounts /proc at
-	# /var/lib/docker/buildkit/executor/<id>/rootfs, a path the ProcView
-	# capability does not cover. Both happen before or outside the mount shapes
-	# this workload asserts, so the build assertion uses the classic builder,
-	# which exercises the same mediated mounts (rootfs overlay, /proc, tmpfs,
-	# binds) inside the build container.
+	# A real build with the default (BuildKit) builder. BuildKit's client serves
+	# this container's Dockerfile to the daemon through the buildkit session, which
+	# lists xattrs on every file it sends, and its executor mounts /proc, tmpfs and
+	# binds inside a rootfs below /var/lib/docker/buildkit - so this single
+	# assertion covers the xattr policy and the view grants as well.
 	_context="$(mktemp -d)"
 	printf 'FROM %s\nRUN printf nscell-dind-build-ok > /built\n' "$_image" >"${_context}/Dockerfile"
-	DOCKER_BUILDKIT=0 docker build --quiet --tag dind-smoke-build "${_context}" >/dev/null
+	docker build --quiet --tag dind-smoke-build "${_context}" >/dev/null
 	__assert_output "build" "nscell-dind-build-ok" \
 		"$(docker run --rm --entrypoint cat dind-smoke-build /built)"
 	docker image rm -f dind-smoke-build >/dev/null 2>&1 || true

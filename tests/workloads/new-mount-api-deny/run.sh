@@ -121,7 +121,9 @@ if machine not in numbers:
 
 # mount-table queries (statmount/listmount) are mediated and answered for every
 # container now, so they belong to the authorized case; what is left here is the
-# request the mediator has to refuse on its own.
+# request the mediator has to refuse on its own. The fs-context family is
+# reported as missing rather than denied: ENOSYS is what tells userland to fall
+# back to mount(2), and NSCell mediates that path in full.
 libc = ctypes.CDLL(None, use_errno=True)
 for name, number in numbers[machine].items():
     if name in ("statmount", "listmount"):
@@ -129,6 +131,11 @@ for name, number in numbers[machine].items():
     ctypes.set_errno(0)
     result = libc.syscall(ctypes.c_long(number), ctypes.c_int(-1), None, ctypes.c_uint(0))
     errno = ctypes.get_errno()
+    if name in ("fsopen", "fsconfig", "fsmount"):
+        if result != -1 or errno != 38:
+            raise SystemExit(f"{name}: result={result} errno={errno}, want result=-1 errno=38(ENOSYS)")
+        print(f"new-mount-api-deny-ok:{name}-unsupported")
+        continue
     if result != -1 or errno != 1:
         raise SystemExit(f"{name}: result={result} errno={errno}, want result=-1 errno=1(EPERM)")
     print(f"new-mount-api-deny-ok:{name}")
@@ -153,7 +160,7 @@ __run_authorized_case() {
   local _target_path="$3"
   local _fs_target_path="$4"
   local _case_output
-  local _expected_output="new-mount-api-${_case}-ok:proxy-attributes-attach"$'\n'"new-mount-api-${_case}-ok:fs-context-attach"$'\n'"new-mount-api-${_case}-ok:thread-handoff"$'\n'"new-mount-api-${_case}-ok:fork-transfer-denied"$'\n'"new-mount-api-${_case}-ok:fd-reuse"$'\n'"new-mount-api-${_case}-ok:multiprocess-same-fd"$'\n'"new-mount-api-${_case}-ok:statmount-7-fields"
+  local _expected_output="new-mount-api-${_case}-ok:proxy-attributes-attach"$'\n'"new-mount-api-${_case}-ok:thread-handoff"$'\n'"new-mount-api-${_case}-ok:fork-transfer-denied"$'\n'"new-mount-api-${_case}-ok:fd-reuse"$'\n'"new-mount-api-${_case}-ok:multiprocess-same-fd"$'\n'"new-mount-api-${_case}-ok:statmount-7-fields"
   local _syscall_name
 
   __cleanup
@@ -463,65 +470,24 @@ def expect_deny(name, *args):
         raise SystemExit(f"{name}: result={result} errno={errno}, want EPERM")
 
 
-expect_deny("fsopen", ctypes.c_char_p(b"overlay"), ctypes.c_uint(0))
-expect_deny("fsopen", ctypes.c_char_p(b"tmpfs"), ctypes.c_uint(2))
+def expect_enosys(name, *args):
+    result, errno = raw_syscall(name, *args)
+    if result != -1 or errno != 38:
+        raise SystemExit(f"{name}: result={result} errno={errno}, want ENOSYS")
 
-unsafe_fd, errno = raw_syscall("fsopen", ctypes.c_char_p(b"tmpfs"), ctypes.c_uint(1))
-if unsafe_fd == -1:
-    raise SystemExit(f"pre-create fsopen failed: errno={errno}")
-if not stat.S_ISSOCK(os.fstat(unsafe_fd).st_mode):
-    raise SystemExit("fsopen exposed a non-proxy descriptor")
-expect_deny("fsconfig", ctypes.c_int(unsafe_fd), ctypes.c_uint(1), ctypes.c_char_p(b"size"), ctypes.c_char_p(b"1m"), ctypes.c_int(0))
-expect_deny("fsconfig", ctypes.c_int(unsafe_fd), ctypes.c_uint(3), ctypes.c_char_p(b"source"), ctypes.c_char_p(b"/etc"), ctypes.c_int(-100))
-expect_deny("fsconfig", ctypes.c_int(unsafe_fd), ctypes.c_uint(2), ctypes.c_char_p(b"mode"), ctypes.c_char_p(b"\x01\x02"), ctypes.c_int(2))
-expect_deny("fsconfig", ctypes.c_int(unsafe_fd), ctypes.c_uint(5), ctypes.c_char_p(b"fd"), None, ctypes.c_int(0))
-expect_deny("fsmount", ctypes.c_int(unsafe_fd), ctypes.c_uint(1), ctypes.c_uint(0x100000))
-expect_deny("fsmount", ctypes.c_int(unsafe_fd), ctypes.c_uint(1), ctypes.c_uint(0x10))
-expect_deny("mount_setattr", ctypes.c_int(unsafe_fd), None, ctypes.c_uint(0x1000), struct.pack("=QQQQ", 1, 0, 0, 0), ctypes.c_size_t(32))
-expect_deny("move_mount", ctypes.c_int(unsafe_fd), None, ctypes.c_int(-100), ctypes.c_char_p(fs_target.encode()), ctypes.c_uint(4))
-expect_deny("fspick", ctypes.c_int(-100), ctypes.c_char_p(target.encode()), ctypes.c_uint(1))
-fsfd = unsafe_fd
 
-expect_deny("fsmount", ctypes.c_int(fsfd), ctypes.c_uint(1), ctypes.c_uint(0xE))
-created, errno = raw_syscall(
-    "fsconfig",
-    ctypes.c_int(fsfd),
-    ctypes.c_uint(6),
-    None,
-    None,
-    ctypes.c_int(0),
-)
-if created != 0:
-    raise SystemExit(f"authorized fsconfig failed: result={created} errno={errno}")
-
-mntfd, errno = raw_syscall(
-    "fsmount",
-    ctypes.c_int(fsfd),
-    ctypes.c_uint(1),
-    ctypes.c_uint(0xE),
-)
-if mntfd == -1:
-    raise SystemExit(f"authorized fsmount failed: errno={errno}")
-if not stat.S_ISSOCK(os.fstat(mntfd).st_mode):
-    raise SystemExit("authorized fsmount exposed a non-proxy descriptor")
-
-expect_deny("fsconfig", ctypes.c_int(fsfd), ctypes.c_uint(6), None, None, ctypes.c_int(0))
-expect_deny("fsmount", ctypes.c_int(fsfd), ctypes.c_uint(1), ctypes.c_uint(0xE))
-moved, errno = raw_syscall(
-    "move_mount",
-    ctypes.c_int(mntfd),
-    None,
-    ctypes.c_int(-100),
-    ctypes.c_char_p(fs_target.encode()),
-    ctypes.c_uint(4),
-)
-if moved != 0:
-    raise SystemExit(f"authorized synthetic move_mount failed: result={moved} errno={errno}")
-if fs_target not in open("/proc/self/mountinfo", encoding="utf-8").read():
-    raise SystemExit("authorized synthetic move_mount did not attach the mount")
-os.close(fsfd)
-os.close(mntfd)
-print(f"new-mount-api-{profile}-ok:fs-context-attach")
+# The fs-context family is not implemented for containers. NSCell used to answer
+# fsopen with a capability proxy descriptor, but no socket can answer read(2) the
+# way a real fs context does (the kernel returns one log message per call, or
+# -ENODATA when the log is empty): a caller that polls the log either blocked
+# forever or spun on end-of-file. ENOSYS is the documented signal for "the new
+# mount API is unavailable", and userland falls back to mount(2), which NSCell
+# mediates in full.
+expect_enosys("fsopen", ctypes.c_char_p(b"tmpfs"), ctypes.c_uint(1))
+expect_enosys("fsopen", ctypes.c_char_p(b"overlay"), ctypes.c_uint(0))
+expect_enosys("fsconfig", ctypes.c_int(0), ctypes.c_uint(6), None, None, ctypes.c_int(0))
+expect_enosys("fsmount", ctypes.c_int(0), ctypes.c_uint(1), ctypes.c_uint(0))
+expect_deny("mount_setattr", ctypes.c_int(0), None, ctypes.c_uint(0x1000), struct.pack("=QQQQ", 1, 0, 0, 0), ctypes.c_size_t(32))
 
 
 def acquire_tree():
@@ -775,14 +741,17 @@ PY
     return 1
   fi
 
-  for _syscall_name in open_tree fsopen fsconfig fsmount mount_setattr move_mount listmount statmount; do
+  # fsopen/fsconfig/fsmount are not allowed any more: the fs-context family is
+  # reported as unsupported (ENOSYS) so userland falls back to mount(2). Their
+  # deny record is asserted further down.
+  for _syscall_name in open_tree mount_setattr move_mount listmount statmount; do
     if ! __daemon_has_decision "$_syscall_name" allow; then
       echo "daemon did not record structured allow for ${_syscall_name}" >&2
       sudo tail -100 "$_daemon_log" >&2
       return 1
     fi
   done
-  for _syscall_name in open_tree fsopen fsconfig fsmount mount_setattr move_mount; do
+  for _syscall_name in open_tree mount_setattr move_mount; do
     if ! __daemon_has_capability_identity "$_syscall_name"; then
       echo "daemon did not record capability identity for ${_syscall_name}" >&2
       sudo tail -100 "$_daemon_log" >&2
@@ -804,11 +773,13 @@ PY
     sudo tail -100 "$_daemon_log" >&2
     return 1
   fi
+  # The fs-context family never reaches attribute inspection: fsmount is
+  # answered with ENOSYS and the audit names the missing feature.
   if ! sudo grep -F 'New mount API decision' "$_daemon_log" |
     grep -F 'syscall=fsmount' |
     grep -F 'decision=deny' |
-    grep -F 'attrFlags=0x100000' >/dev/null; then
-    echo "daemon did not record idmap fsmount denial" >&2
+    grep -F 'fs-context family is not implemented' >/dev/null; then
+    echo "daemon did not record the unsupported fs-context family" >&2
     sudo tail -100 "$_daemon_log" >&2
     return 1
   fi

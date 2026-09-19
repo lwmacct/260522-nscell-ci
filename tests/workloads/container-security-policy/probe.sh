@@ -201,6 +201,13 @@ for op, fn in checks:
         raise
     raise RuntimeError(f"{op} unexpectedly succeeded for non-whitelisted xattr")
 
+# Listing is what tools do before they read a name. NSCell mediates named
+# operations (the checks above) but has to leave the listing to the kernel:
+# turning it into EPERM breaks every caller that enumerates xattrs first
+# (docker build's filesync sender is one), and the container only learns the
+# names of its own objects. Reading any value still goes through the checks.
+os.listxattr(path)
+
 print("xattr-negative-policy-ok")
 PY
 }
