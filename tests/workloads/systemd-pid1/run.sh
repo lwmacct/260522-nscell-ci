@@ -66,8 +66,6 @@ __main() {
 		--hostname "$_systemd_pid1_name" \
 		--runtime nscell \
 		--cgroupns=private \
-		--annotation io.backend.security.profile=default \
-		--label io.backend.security.profile=default \
 		--entrypoint /usr/lib/systemd/systemd \
 		--tmpfs /run:rw,nosuid,nodev,mode=755,size=64m \
 		--tmpfs /run/lock:rw,nosuid,nodev,noexec,mode=755,size=16m \

@@ -89,7 +89,6 @@ __main() {
   docker run -d \
     --name "$_fuse_request_timeout_name" \
     --runtime nscell \
-    --label io.backend.security.profile=default \
     "$_oci_base_image" \
     /bin/sh -c 'sleep 2; cat /proc/uptime >/dev/null' \
     >/dev/null

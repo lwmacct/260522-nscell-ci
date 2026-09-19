@@ -32,22 +32,19 @@ __deny_output_has_case() {
 __daemon_has_decision() {
   local _syscall_name="$1"
   local _decision="$2"
-  local _profile="$3"
 
   sudo grep -F 'New mount API decision' "$_daemon_log" |
     grep -F "syscall=${_syscall_name}" |
     grep -F "decision=${_decision}" |
-    grep -F "profile=${_profile}" >/dev/null
+    grep -q -F 'auditSource=seccomp-new-mount'
 }
 
 __daemon_has_capability_identity() {
   local _syscall_name="$1"
-  local _profile="$2"
 
   sudo grep -F 'New mount API decision' "$_daemon_log" |
     grep -F "syscall=${_syscall_name}" |
     grep -F 'decision=allow' |
-    grep -F "profile=${_profile}" |
     grep -F 'capabilityId=' |
     grep -F 'callerTgid=' |
     grep -F 'proxyFd=' |
@@ -56,15 +53,13 @@ __daemon_has_capability_identity() {
 }
 
 __run_deny_case() {
-  local _profile="$1"
+  local _case="$1"
   local _output
 
   __cleanup
   _output="$(docker run --rm -i \
     --name "$_new_mount_api_deny_name" \
     --runtime nscell \
-    --annotation "io.backend.security.profile=${_profile}" \
-    --label "io.backend.security.profile=${_profile}" \
     --privileged \
     "$_container_security_policy_base_image" \
     python3 - <<'PY'
@@ -166,13 +161,13 @@ if stat_result != -1 or ctypes.get_errno() != 1:
 print("new-mount-api-deny-ok:statmount")
 PY
   )"
-  printf 'new-mount-api-deny-output[%s]=%q\n' "$_profile" "$_output"
+  printf 'new-mount-api-deny-output[%s]=%q\n' "$_case" "$_output"
   __deny_output_has_case "$_output" || return 1
 
   local _syscall_name
   for _syscall_name in open_tree fspick fsopen fsconfig fsmount move_mount mount_setattr statmount listmount; do
-    if ! __daemon_has_decision "$_syscall_name" deny "$_profile"; then
-      echo "daemon did not record structured ${_profile} deny for ${_syscall_name}" >&2
+    if ! __daemon_has_decision "$_syscall_name" deny; then
+      echo "daemon did not record structured deny for ${_syscall_name}" >&2
       sudo tail -100 "$_daemon_log" >&2
       return 1
     fi
@@ -180,22 +175,20 @@ PY
 }
 
 __run_authorized_case() {
-  local _profile="$1"
+  local _case="$1"
   local _source_path="$2"
   local _target_path="$3"
   local _fs_target_path="$4"
   local _case_output
-  local _expected_output="new-mount-api-${_profile}-ok:proxy-attributes-attach"$'\n'"new-mount-api-${_profile}-ok:fs-context-attach"$'\n'"new-mount-api-${_profile}-ok:thread-handoff"$'\n'"new-mount-api-${_profile}-ok:fork-transfer-denied"$'\n'"new-mount-api-${_profile}-ok:fd-reuse"$'\n'"new-mount-api-${_profile}-ok:multiprocess-same-fd"$'\n'"new-mount-api-${_profile}-ok:statmount-7-fields"
+  local _expected_output="new-mount-api-${_case}-ok:proxy-attributes-attach"$'\n'"new-mount-api-${_case}-ok:fs-context-attach"$'\n'"new-mount-api-${_case}-ok:thread-handoff"$'\n'"new-mount-api-${_case}-ok:fork-transfer-denied"$'\n'"new-mount-api-${_case}-ok:fd-reuse"$'\n'"new-mount-api-${_case}-ok:multiprocess-same-fd"$'\n'"new-mount-api-${_case}-ok:statmount-7-fields"
   local _syscall_name
 
   __cleanup
   _case_output="$(docker run --rm -i \
     --name "$_new_mount_api_deny_name" \
     --runtime nscell \
-    --annotation "io.backend.security.profile=${_profile}" \
-    --label "io.backend.security.profile=${_profile}" \
     --privileged \
-    --env "CASE_PROFILE=${_profile}" \
+    --env "CASE_PROFILE=${_case}" \
     --env "CASE_SOURCE=${_source_path}" \
     --env "CASE_TARGET=${_target_path}" \
     --env "CASE_FS_TARGET=${_fs_target_path}" \
@@ -803,29 +796,29 @@ for label, count_offset, list_offset, bit in (
 print(f"new-mount-api-{profile}-ok:statmount-7-fields")
 PY
   )"
-  printf 'new-mount-api-authorized-output[%s]=%q\n' "$_profile" "$_case_output"
+  printf 'new-mount-api-authorized-output[%s]=%q\n' "$_case" "$_case_output"
   if [[ "$_case_output" != "$_expected_output" ]]; then
-    echo "authorized ${_profile} new-mount API case failed" >&2
+    echo "authorized ${_case} new-mount API case failed" >&2
     return 1
   fi
 
   for _syscall_name in open_tree fsopen fsconfig fsmount mount_setattr move_mount listmount statmount; do
-    if ! __daemon_has_decision "$_syscall_name" allow "$_profile"; then
-      echo "daemon did not record structured ${_profile} allow for ${_syscall_name}" >&2
+    if ! __daemon_has_decision "$_syscall_name" allow; then
+      echo "daemon did not record structured allow for ${_syscall_name}" >&2
       sudo tail -100 "$_daemon_log" >&2
       return 1
     fi
   done
   for _syscall_name in open_tree fsopen fsconfig fsmount mount_setattr move_mount; do
-    if ! __daemon_has_capability_identity "$_syscall_name" "$_profile"; then
-      echo "daemon did not record ${_profile} capability identity for ${_syscall_name}" >&2
+    if ! __daemon_has_capability_identity "$_syscall_name"; then
+      echo "daemon did not record capability identity for ${_syscall_name}" >&2
       sudo tail -100 "$_daemon_log" >&2
       return 1
     fi
   done
   for _syscall_name in open_tree fsopen fsconfig fsmount mount_setattr listmount statmount; do
-    if ! __daemon_has_decision "$_syscall_name" deny "$_profile"; then
-      echo "daemon did not record structured ${_profile} deny for ${_syscall_name}" >&2
+    if ! __daemon_has_decision "$_syscall_name" deny; then
+      echo "daemon did not record structured deny for ${_syscall_name}" >&2
       sudo tail -100 "$_daemon_log" >&2
       return 1
     fi
@@ -833,18 +826,16 @@ PY
   if ! sudo grep -F 'New mount API decision' "$_daemon_log" |
     grep -F 'syscall=open_tree' |
     grep -F 'decision=allow' |
-    grep -F "profile=${_profile}" |
     grep -F 'flags=0x88001' >/dev/null; then
-    echo "daemon did not record recursive ${_profile} open_tree acquisition" >&2
+    echo "daemon did not record recursive open_tree acquisition" >&2
     sudo tail -100 "$_daemon_log" >&2
     return 1
   fi
   if ! sudo grep -F 'New mount API decision' "$_daemon_log" |
     grep -F 'syscall=fsmount' |
     grep -F 'decision=deny' |
-    grep -F "profile=${_profile}" |
     grep -F 'attrFlags=0x100000' >/dev/null; then
-    echo "daemon did not record idmap fsmount denial for ${_profile}" >&2
+    echo "daemon did not record idmap fsmount denial" >&2
     sudo tail -100 "$_daemon_log" >&2
     return 1
   fi
@@ -863,17 +854,17 @@ __main() {
   __cleanup
   __ensure_host_image "$_container_security_policy_base_image"
 
-  __log "checking structured default new-mount denials"
-  __run_deny_case default
+  __log "checking structured new-mount denials for requests the mediator refuses"
+  __run_deny_case system
 
-  __log "checking profile-scoped proxy acquisition, attributes, and attach"
+  __log "checking proxy acquisition, attributes, and attach for each workload path family"
   __run_authorized_case \
-    dind \
+    docker \
     /var/lib/docker/overlay2/nscell-ci/merged \
     /var/lib/docker/overlay2/nscell-ci/attached \
     /var/lib/docker/overlay2/nscell-ci/fscontext
   __run_authorized_case \
-    k8s-node \
+    kubelet \
     /var/lib/kubelet/pods/nscell-ci/merged \
     /var/lib/kubelet/pods/nscell-ci/attached \
     /var/lib/kubelet/pods/nscell-ci/fscontext

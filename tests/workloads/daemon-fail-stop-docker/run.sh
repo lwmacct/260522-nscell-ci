@@ -111,7 +111,6 @@ __main() {
   docker run -d \
     --name "$_daemon_fail_stop_docker_name" \
     --runtime nscell \
-    --label io.backend.security.profile=default \
     "$_oci_base_image" \
     sleep 300 >/dev/null
 

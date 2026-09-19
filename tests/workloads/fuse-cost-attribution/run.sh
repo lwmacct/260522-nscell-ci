@@ -183,8 +183,6 @@ __main() {
 		--name "$_fuse_cost_attribution_name" \
 		--runtime nscell \
 		--cgroupns=private \
-		--annotation io.backend.security.profile=default \
-		--label io.backend.security.profile=default \
 		"$_oci_base_image" \
 		/bin/sh -c '
 			set -e

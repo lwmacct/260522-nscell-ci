@@ -35,8 +35,6 @@ __main() {
 		--hostname "$_seccomp_notify_concurrency_name" \
 		--runtime nscell \
 		--cgroupns=private \
-		--annotation io.backend.security.profile=default \
-		--label io.backend.security.profile=default \
 		-e "CI_SECCOMP_NOTIFY_CONCURRENCY_PROCESSES=${_seccomp_notify_concurrency_processes}" \
 		-e "CI_SECCOMP_NOTIFY_CONCURRENCY_SYSINFO_ITERATIONS=${_seccomp_notify_concurrency_sysinfo_iterations}" \
 		-e "CI_SECCOMP_NOTIFY_CONCURRENCY_OPENAT2_ITERATIONS=${_seccomp_notify_concurrency_openat2_iterations}" \

@@ -41,10 +41,6 @@ services:
       - containerd-snapshotter=false
       - --storage-driver
       - overlay2
-    annotations:
-      io.backend.security.profile: dind
-    labels:
-      io.backend.security.profile: dind
     networks:
       - ${_docker_in_docker_network}
     devices:

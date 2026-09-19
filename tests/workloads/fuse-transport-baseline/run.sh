@@ -79,7 +79,6 @@ __main() {
 		--name "$_fuse_transport_baseline_name" \
 		--runtime nscell \
 		--cgroupns=private \
-		--label io.backend.security.profile=default \
 		"$_oci_base_image" \
 		/bin/sh -c '
 			set -e

@@ -128,13 +128,6 @@ __main() {
     '["/bin/sh", "-c", "exec python3 /tmp/copy_file_range.py"]' \
     "$_export_name"
   __write_copy_program
-  _config_tmp="$(mktemp)"
-  # shellcheck disable=SC2024 # The temporary output file is owned by the caller.
-  sudo jq '.annotations["io.backend.security.profile"] = "dind"' \
-    "${_bundle}/config.json" >"$_config_tmp"
-  sudo install -m 0600 "$_config_tmp" "${_bundle}/config.json"
-  rm -f "$_config_tmp"
-
   __log "issuing copy_file_range over VirtFS"
   _copy64_before="$(__copy64_requests)"
   _legacy_before="$(__legacy_copy_requests)"

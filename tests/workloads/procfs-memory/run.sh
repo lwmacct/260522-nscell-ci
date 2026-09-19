@@ -40,7 +40,6 @@ __main() {
     --cgroupns=private \
     --memory "$_procfs_memory_memory_bytes" \
     --memory-swap "$_procfs_memory_memory_bytes" \
-    --label io.backend.security.profile=default \
     -e "CI_PROCFS_MEMORY_EXPECT_MEMTOTAL_KIB=${_expected_memtotal_kib}" \
     -e "CI_PROCFS_MEMORY_EXPECT_SWAPTOTAL_KIB=0" \
     -e "CI_PROCFS_MEMORY_OVERFLOW_ALLOC_BYTES=${_procfs_memory_overflow_alloc_bytes}" \
@@ -54,7 +53,6 @@ __main() {
     --cgroupns=private \
     --memory "$_procfs_memory_memory_bytes" \
     --memory-swap "$_procfs_memory_swap_bytes" \
-    --label io.backend.security.profile=default \
     -e "CI_PROCFS_MEMORY_EXPECT_MEMTOTAL_KIB=${_expected_memtotal_kib}" \
     -e "CI_PROCFS_MEMORY_EXPECT_SWAPTOTAL_KIB=${_expected_swap_kib}" \
     -e "CI_PROCFS_MEMORY_OVERFLOW_ALLOC_BYTES=${_procfs_memory_overflow_alloc_bytes}" \

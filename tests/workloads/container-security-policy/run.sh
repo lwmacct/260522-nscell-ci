@@ -145,21 +145,18 @@ __check_host_root_mapping_rejected() {
 
 __assert_bpf_mount_audit() {
   local _log_start="$1"
-  local _profile="$2"
-  local _fs_type="$3"
+  local _fs_type="$2"
   local _deadline _log
 
   _deadline=$((SECONDS + 15))
   while ((SECONDS <= _deadline)); do
     _log="$(tail -n +"$((_log_start + 1))" "$_daemon_log" 2>/dev/null || true)"
     if awk \
-      -v _profile="profile=${_profile}" \
       -v _fs_type="name=${_fs_type}" \
       'index($0, "BPF LSM gate audit event") &&
 			 index($0, "operation=mount") &&
 			 index($0, "decision=deny") &&
 			 index($0, "reason=policy") &&
-			 index($0, _profile) &&
 			 index($0, _fs_type) { found = 1 }
 			 END { exit !found }' <<<"$_log"; then
       return 0
@@ -167,7 +164,7 @@ __assert_bpf_mount_audit() {
     sleep 0.5
   done
 
-  echo "missing BPF LSM mount deny audit for profile=${_profile} fs_type=${_fs_type}" >&2
+  echo "missing BPF LSM mount deny audit for fs_type=${_fs_type}" >&2
   tail -n +"$((_log_start + 1))" "$_daemon_log" 2>/dev/null |
     grep -E 'BPF LSM gate audit event|slow seccomp notification|mount denied|operation=mount|fs_type=' |
     tail -160 >&2 || true
@@ -176,31 +173,27 @@ __assert_bpf_mount_audit() {
 
 __assert_unsafe_mount_audits() {
   local _log_start="$1"
-  local _profile="$2"
   local _fs_type
 
   for _fs_type in securityfs debugfs tracefs configfs; do
-    __assert_bpf_mount_audit "$_log_start" "$_profile" "$_fs_type"
+    __assert_bpf_mount_audit "$_log_start" "$_fs_type"
   done
 }
 
 __assert_bpf_kernel_interface_audit() {
   local _log_start="$1"
-  local _profile="$2"
-  local _file_name="$3"
+  local _file_name="$2"
   local _deadline _log
 
   _deadline=$((SECONDS + 15))
   while ((SECONDS <= _deadline)); do
     _log="$(tail -n +"$((_log_start + 1))" "$_daemon_log" 2>/dev/null || true)"
     if awk \
-      -v _profile="profile=${_profile}" \
       -v _file_name="file_name=${_file_name}" \
       'index($0, "BPF LSM gate audit event") &&
 			 (index($0, "operation=file_open") || index($0, "operation=inode_permission")) &&
 			 index($0, "decision=deny") &&
 			 index($0, "reason=kernel-interface") &&
-			 index($0, _profile) &&
 			 (_file_name == "file_name=" || index($0, _file_name)) { found = 1 }
 			 END { exit !found }' <<<"$_log"; then
       return 0
@@ -208,7 +201,7 @@ __assert_bpf_kernel_interface_audit() {
     sleep 0.5
   done
 
-  echo "missing BPF LSM kernel-interface deny audit for profile=${_profile} file_name=${_file_name}" >&2
+  echo "missing BPF LSM kernel-interface deny audit for file_name=${_file_name}" >&2
   tail -n +"$((_log_start + 1))" "$_daemon_log" 2>/dev/null |
     grep -E 'BPF LSM gate audit event|operation=(file_open|inode_permission)|kernel-interface|file_name=' |
     tail -160 >&2 || true
@@ -217,8 +210,7 @@ __assert_bpf_kernel_interface_audit() {
 
 __assert_kernel_interface_audits() {
   local _log_start="$1"
-  local _profile="$2"
-  local _probe_output="$3"
+  local _probe_output="$2"
   local _file_name
 
   for _file_name in lsm securityfs debugfs tracefs configfs; do
@@ -227,10 +219,10 @@ __assert_kernel_interface_audits() {
     fi
     case "$_file_name" in
     securityfs | debugfs | tracefs | configfs)
-      __assert_bpf_kernel_interface_audit "$_log_start" "$_profile" ""
+      __assert_bpf_kernel_interface_audit "$_log_start" ""
       ;;
     *)
-      __assert_bpf_kernel_interface_audit "$_log_start" "$_profile" "$_file_name"
+      __assert_bpf_kernel_interface_audit "$_log_start" "$_file_name"
       ;;
     esac
   done
@@ -274,13 +266,13 @@ __assert_no_bpf_task_audit() {
   if awk \
     'index($0, "BPF LSM gate audit event") &&
 		 (index($0, "operation=signal") || index($0, "operation=ptrace")) &&
-		 (index($0, "container_hash=0000000000000000") || !index($0, "profile=")) { found = 1 }
+		 index($0, "container_hash=0000000000000000") { found = 1 }
 		 END { exit !found }' <<<"$_log"; then
     echo "host task operation unexpectedly produced BPF LSM task audit" >&2
     awk \
       'index($0, "BPF LSM gate audit event") &&
 			 (index($0, "operation=signal") || index($0, "operation=ptrace")) &&
-			 (index($0, "container_hash=0000000000000000") || !index($0, "profile=")) { print }' <<<"$_log" >&2 || true
+			 index($0, "container_hash=0000000000000000") { print }' <<<"$_log" >&2 || true
     exit 1
   fi
 }
@@ -402,24 +394,21 @@ __expect_task_op_denied() {
 
 __assert_bpf_xattr_audit() {
   local _log_start="$1"
-  local _profile="$2"
-  local _operation="$3"
-  local _decision="$4"
-  local _xattr_name="$5"
+  local _operation="$2"
+  local _decision="$3"
+  local _xattr_name="$4"
   local _deadline _log
 
   _deadline=$((SECONDS + 15))
   while ((SECONDS <= _deadline)); do
     _log="$(tail -n +"$((_log_start + 1))" "$_daemon_log" 2>/dev/null || true)"
     if awk \
-      -v _profile="profile=${_profile}" \
       -v _operation="operation=${_operation}" \
       -v _decision="decision=${_decision}" \
       -v _xattr_name="name=${_xattr_name}" \
       'index($0, "BPF LSM gate audit event") &&
 			 index($0, _operation) &&
 			 index($0, _decision) &&
-			 index($0, _profile) &&
 			 index($0, _xattr_name) { found = 1 }
 			 END { exit !found }' <<<"$_log"; then
       return 0
@@ -427,7 +416,7 @@ __assert_bpf_xattr_audit() {
     sleep 0.5
   done
 
-  echo "missing BPF LSM xattr audit for profile=${_profile} operation=${_operation} decision=${_decision} name=${_xattr_name}" >&2
+  echo "missing BPF LSM xattr audit for operation=${_operation} decision=${_decision} name=${_xattr_name}" >&2
   tail -n +"$((_log_start + 1))" "$_daemon_log" 2>/dev/null |
     grep -E 'BPF LSM gate audit event|operation=.*xattr|name=' |
     tail -160 >&2 || true
@@ -436,19 +425,17 @@ __assert_bpf_xattr_audit() {
 
 __assert_xattr_negative_audits() {
   local _log_start="$1"
-  local _profile="$2"
 
-  __assert_bpf_xattr_audit "$_log_start" "$_profile" setxattr deny user.nscell_ci_denied
-  __assert_bpf_xattr_audit "$_log_start" "$_profile" getxattr deny user.nscell_ci_denied
-  __assert_bpf_xattr_audit "$_log_start" "$_profile" removexattr deny user.nscell_ci_denied
+  __assert_bpf_xattr_audit "$_log_start" setxattr deny user.nscell_ci_denied
+  __assert_bpf_xattr_audit "$_log_start" getxattr deny user.nscell_ci_denied
+  __assert_bpf_xattr_audit "$_log_start" removexattr deny user.nscell_ci_denied
 }
 
 __assert_xattr_trusted_overlay_audits() {
   local _log_start="$1"
-  local _profile="$2"
 
-  __assert_bpf_xattr_audit "$_log_start" "$_profile" setxattr allow trusted.overlay.origin
-  __assert_bpf_xattr_audit "$_log_start" "$_profile" getxattr allow trusted.overlay.origin
+  __assert_bpf_xattr_audit "$_log_start" setxattr allow trusted.overlay.origin
+  __assert_bpf_xattr_audit "$_log_start" getxattr allow trusted.overlay.origin
 }
 
 __assert_no_bpf_host_audit() {
@@ -581,8 +568,6 @@ __check_host_target_task_gate() (
     --cgroupns=private \
     --cap-add SYS_PTRACE \
     --cap-add KILL \
-    --annotation "io.backend.security.profile=default" \
-    --label "io.backend.security.profile=default" \
     "$_container_security_policy_image" >/dev/null
   _source_cgroup="$(__container_cgroup_path "$_name")"
   sleep 3600 &
@@ -623,8 +608,6 @@ __check_cross_container_task_gate() (
       --cgroupns=private \
       --cap-add SYS_PTRACE \
       --cap-add KILL \
-      --annotation "io.backend.security.profile=default" \
-      --label "io.backend.security.profile=default" \
       "$_container_security_policy_image" >/dev/null
   done
   _source_cgroup="$(__container_cgroup_path "$_name_a")"
@@ -643,21 +626,19 @@ __check_cross_container_task_gate() (
 
 __check_proc_sys() {
   local _name="$1"
-  local _profile="$2"
   local _host_global_deny_sysctls _real_namespaced_sysctls
 
-  __log "checking proc sys security policy for ${_name} (${_profile})"
-  _host_global_deny_sysctls="$(nscell daemon policy sysctl-list --profile "$_profile" --kind host-global-deny | tr '\n' ' ')"
-  _real_namespaced_sysctls="$(nscell daemon policy sysctl-list --profile "$_profile" --kind real-namespaced | tr '\n' ' ')"
+  __log "checking proc sys security policy for ${_name}"
+  _host_global_deny_sysctls="$(nscell daemon policy sysctl-list --kind host-global-deny | tr '\n' ' ')"
+  _real_namespaced_sysctls="$(nscell daemon policy sysctl-list --kind real-namespaced | tr '\n' ' ')"
   docker exec \
     -e "host_global_deny_sysctls=${_host_global_deny_sysctls}" \
     -e "real_namespaced_sysctls=${_real_namespaced_sysctls}" \
     "$_name" nscell-ci-container-security-policy-probe proc-sys-policy
 }
 
-__run_profile() {
-  local _profile="$1"
-  local _name="${_container_security_policy_name}-${_profile}"
+__run_system_container() {
+  local _name="${_container_security_policy_name}-system"
   local _log_start _probe_output
 
   docker rm -f "$_name" >/dev/null 2>&1 || true
@@ -667,8 +648,6 @@ __run_profile() {
     --runtime nscell \
     --cgroupns=private \
     --cap-add SYS_ADMIN \
-    --annotation "io.backend.security.profile=${_profile}" \
-    --label "io.backend.security.profile=${_profile}" \
     "$_container_security_policy_image" >/dev/null
 
   __log "checking process identity and namespace isolation in ${_name}"
@@ -681,32 +660,30 @@ __run_profile() {
   __log "checking privileged resource negative policy in ${_name}"
   _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
   __run_probe "$_name" privileged-resource-negative-policy
-  __assert_unsafe_mount_audits "$_log_start" "$_profile"
+  __assert_unsafe_mount_audits "$_log_start"
   __log "checking kernel interface file policy in ${_name}"
   _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
   _probe_output="$(__run_probe "$_name" kernel-interface-file-policy)"
   printf '%s\n' "$_probe_output"
-  __assert_kernel_interface_audits "$_log_start" "$_profile" "$_probe_output"
+  __assert_kernel_interface_audits "$_log_start" "$_probe_output"
   __log "checking cgroup subtree mount policy in ${_name}"
   _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
   __run_probe "$_name" cgroup-subtree-mount-policy
-  __assert_unsafe_mount_audits "$_log_start" "$_profile"
+  __assert_unsafe_mount_audits "$_log_start"
   __log "checking cgroup subtree kernel interface file policy in ${_name}"
   _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
   _probe_output="$(__run_probe "$_name" cgroup-subtree-kernel-interface-file-policy)"
   printf '%s\n' "$_probe_output"
-  __assert_kernel_interface_audits "$_log_start" "$_profile" "$_probe_output"
+  __assert_kernel_interface_audits "$_log_start" "$_probe_output"
   __log "checking xattr negative policy in ${_name}"
   _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
   __run_probe "$_name" xattr-negative-policy
-  __assert_xattr_negative_audits "$_log_start" "$_profile"
-  if [[ "$_profile" == "dind" ]]; then
-    __log "checking trusted overlay xattr policy in ${_name}"
-    _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
-    __run_probe "$_name" xattr-trusted-overlay-policy
-    __assert_xattr_trusted_overlay_audits "$_log_start" "$_profile"
-  fi
-  __check_proc_sys "$_name" "$_profile"
+  __assert_xattr_negative_audits "$_log_start"
+  __log "checking trusted overlay xattr policy in ${_name}"
+  _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
+  __run_probe "$_name" xattr-trusted-overlay-policy
+  __assert_xattr_trusted_overlay_audits "$_log_start"
+  __check_proc_sys "$_name"
 }
 
 __main() {
@@ -716,9 +693,7 @@ __main() {
     __remove_oci_bundle "$_identity_bundle"
     docker rm -f "$_identity_export_name" >/dev/null 2>&1 || true
     docker rm -f \
-      "${_container_security_policy_name}-default" \
-      "${_container_security_policy_name}-dind" \
-      "${_container_security_policy_name}-k8s-node" \
+      "${_container_security_policy_name}-system" \
       "${_container_security_policy_name}-host-target" \
       "${_container_security_policy_name}-task-a" \
       "${_container_security_policy_name}-task-b" >/dev/null 2>&1 || true
@@ -736,9 +711,7 @@ __main() {
   __check_host_bpf_gate_exemption
   __check_host_kernel_interface_gate_exemption
   __check_host_task_gate_exemption
-  __run_profile k8s-node
-  __run_profile default
-  __run_profile dind
+  __run_system_container
   __check_host_target_task_gate
   __check_cross_container_task_gate
 

@@ -87,8 +87,6 @@ __main() {
     --hostname "$_kubernetes_k3s_name" \
     --runtime nscell \
     --cgroupns=private \
-    --annotation io.backend.security.profile=k8s-node \
-    --label io.backend.security.profile=k8s-node \
     --device /dev/net/tun:/dev/net/tun:rwm \
     --tmpfs /run \
     --tmpfs /run/lock \
