@@ -90,6 +90,18 @@ __check_mounts() {
 		"$(docker run --rm --privileged "$_image" \
 			sh -c 'mkdir -p /probe-mnt8 && mount -t tmpfs -o size=1m tmpfs /probe-mnt8 && \
 				printf nscell-dind-mount8-ok > /probe-mnt8/marker && cat /probe-mnt8/marker')"
+
+	# An inner container's own /dev entries: runc opens /dev/pts/ptmx while it
+	# starts a tty, and the container's IPC namespace gets a fresh mqueue
+	# instance. Both used to be treated as "already installed" because their
+	# shapes matched a container rootfs, which left nested containers (and k3s
+	# pods) without their own instances.
+	__assert_output "nested-devpts" "nscell-dind-devpts-ok" \
+		"$(docker run --rm -t "$_image" \
+			sh -c '[ "$(stat -f -c %T /dev/pts)" = devpts ] && printf nscell-dind-devpts-ok')"
+	__assert_output "nested-mqueue" "nscell-dind-mqueue-ok" \
+		"$(docker run --rm --ipc=private "$_image" \
+			sh -c '[ "$(stat -f -c %T /dev/mqueue)" = mqueue ] && printf nscell-dind-mqueue-ok')"
 }
 
 __check_build() {

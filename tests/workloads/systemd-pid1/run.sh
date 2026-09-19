@@ -125,6 +125,14 @@ __main() {
 	stat -c "systemd-container-work %u:%g %n" /work /work/systemd-unit-probe
 	systemctl list-units --type=service --no-pager | grep -F nscell-ci-probe.service
 	systemctl list-units --type=service --state=running --no-pager
+	# A runtime mount from inside the container: systemd and mount(8) may reach
+	# for the new mount API, which NSCell answers with ENOSYS so the caller falls
+	# back to mount(2) - the path the mediator replays in full.
+	systemd-run --quiet --wait --collect --unit=nscell-ci-runtime-tmpfs \
+		/bin/sh -c '"'"'mkdir -p /mnt/nscell-ci-runtime-tmpfs &&
+			mount -t tmpfs -o size=1m tmpfs /mnt/nscell-ci-runtime-tmpfs &&
+			test -d /mnt/nscell-ci-runtime-tmpfs'"'"'
+	echo "systemd-runtime-mount-ok"
 	echo "systemd-container-cgroup-ok"
 	echo "systemd-unit-ok"
 '
