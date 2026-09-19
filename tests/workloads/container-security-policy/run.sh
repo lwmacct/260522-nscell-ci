@@ -746,9 +746,13 @@ __check_kernel_view_bind_admission() {
   docker rm -f "${_name_prefix}-tree" >/dev/null 2>&1 || true
 
   # Positive control: an ordinary host directory bind still works, the
-  # container's own /proc stays container-local, and binding /proc inside the
-  # container is still denied by the mount policy.
-  timeout 120 docker run --rm --runtime nscell -v "${_work_dir}/data:/data:ro" \
+  # container's own /proc stays container-local (its pid namespace is not the
+  # host's), and binding /proc inside the container is still denied by the mount
+  # policy.
+  local _host_pidns
+  _host_pidns="$(readlink /proc/1/ns/pid)"
+  timeout 120 docker run --rm --runtime nscell -e CI_HOST_PID_NS="${_host_pidns}" \
+    -v "${_work_dir}/data:/data:ro" \
     "$_container_security_policy_image" sh -c '
 			cat /data/marker
 			mkdir -p /tmp/proc-bind
@@ -756,10 +760,29 @@ __check_kernel_view_bind_admission() {
 				echo "container bind of /proc unexpectedly succeeded" >&2
 				exit 1
 			fi
-			case "$(tr -d "\0" </proc/1/cmdline)" in
-				*systemd*) echo "/proc/1 is the host init" >&2; exit 1 ;;
-			esac
+			if [ "$(readlink /proc/1/ns/pid)" = "${CI_HOST_PID_NS}" ]; then
+				echo "/proc/1 lives in the host pid namespace" >&2
+				exit 1
+			fi
+			if [ "$(readlink /proc/1/ns/pid)" != "$(readlink /proc/self/ns/pid)" ]; then
+				echo "/proc/1 is not this container init" >&2
+				exit 1
+			fi
 			echo kernel-view-bind-positive-ok
+		'
+
+  # A bind whose *target* is /sys/fs/cgroup comes from docker itself when an
+  # image declares `VOLUME /sys/fs/cgroup` (systemd images). NSCell replaces the
+  # destination with its own cgroup view, so the container must start and see
+  # cgroup2 there.
+  install -d -m 0755 "${_work_dir}/cgroup"
+  timeout 120 docker run --rm --runtime nscell -v "${_work_dir}/cgroup:/sys/fs/cgroup" \
+    "$_container_security_policy_image" sh -c '
+			grep " /sys/fs/cgroup " /proc/self/mountinfo >/dev/null ||
+				{ echo "/sys/fs/cgroup is not mounted" >&2; exit 1; }
+			grep " /sys/fs/cgroup " /proc/self/mountinfo | grep -q " - cgroup2 " ||
+				{ echo "/sys/fs/cgroup is not the nscell cgroup2 view" >&2; exit 1; }
+			echo kernel-view-cgroup-target-ok
 		'
 
   if tail -n +"$((_log_start + 1))" "$_daemon_log" 2>/dev/null | grep -q "ID-map mount on host"; then
