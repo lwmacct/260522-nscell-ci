@@ -14,6 +14,7 @@ import json
 import mmap
 import struct
 import sys
+import time
 
 libc = ctypes.CDLL(None, use_errno=True)
 
@@ -114,8 +115,13 @@ class Ring(object):
             import os
             os.close(self.fd)
 
-    def submit(self, opcode):
-        """Submit one SQE and return ("admitted", result) or ("denied", EACCES)."""
+    def submit(self, opcode, wait_seconds=2.0):
+        """Submit one SQE and classify what the ring did with it.
+
+        Returns (kind, detail) where kind is one of "admitted", "denied" (the
+        kernel refused it with EACCES), "no-completion" (nothing was submitted,
+        which is also a refusal) or "enter-error".
+        """
         tail = struct.unpack_from("<I", self.sq_ring, self.params.sq_off.tail)[0]
         mask = struct.unpack_from("<I", self.sq_ring, self.params.sq_off.ring_mask)[0]
         index = tail & mask
@@ -131,24 +137,42 @@ class Ring(object):
 
         ctypes.set_errno(0)
         ret = libc.syscall(SYS_io_uring_enter, self.fd, 1, 1, 0, None, 0)
+        errno = ctypes.get_errno()
         if ret < 0:
-            errno = ctypes.get_errno()
-            return ("denied", -errno) if errno == EACCES else ("enter-error", -errno)
+            if errno == EACCES:
+                return ("denied", {"enter": ret, "errno": errno})
+            return ("enter-error", {"enter": ret, "errno": errno})
 
-        head = struct.unpack_from("<I", self.cq_ring, self.params.cq_off.head)[0]
+        # A refused SQE is not guaranteed to post a completion, so wait for the
+        # kernel to publish one before reading it - otherwise the read would
+        # return the previous opcode's result.
+        deadline = time.time() + wait_seconds
+        while time.time() < deadline:
+            head = struct.unpack_from("<I", self.cq_ring, self.params.cq_off.head)[0]
+            tail = struct.unpack_from("<I", self.cq_ring, self.params.cq_off.tail)[0]
+            if head != tail:
+                break
+            time.sleep(0.002)
+        else:
+            return ("no-completion", {"enter": ret, "errno": errno})
+
         cq_mask = struct.unpack_from("<I", self.cq_ring, self.params.cq_off.ring_mask)[0]
         offset = self.params.cq_off.cqes + (head & cq_mask) * CQE_SIZE
         result = struct.unpack_from("<i", self.cq_ring, offset + 8)[0]
         struct.pack_into("<I", self.cq_ring, self.params.cq_off.head, head + 1)
         if result == -EACCES:
-            return ("denied", result)
-        return ("admitted", result)
+            return ("denied", {"enter": ret, "res": result})
+        return ("admitted", {"enter": ret, "res": result})
 
 
 def register_restriction():
     """Ask for a task-scoped restriction; a container already has one."""
-    header = struct.pack("<HHI3I", 0, 0, 0, 0, 0, 0)
-    entry = struct.pack("<HBBI3I", IORING_RESTRICTION_SQE_OP, 0, 0, 0, 0, 0)
+    # struct io_uring_task_restriction { u16 flags; u16 nr_res; u32 resv[3]; }
+    # struct io_uring_restriction { u16 opcode; u8 value; u8 resv; u32 resv2[3]; }
+    header = struct.pack("<HH3I", 0, 1, 0, 0, 0)
+    entry = struct.pack("<HBB3I", IORING_RESTRICTION_SQE_OP, 0, 0, 0, 0, 0)
+    if len(header) != 16 or len(entry) != 16:
+        raise AssertionError("io_uring restriction structures must be 16 bytes each")
     buffer = ctypes.create_string_buffer(header + entry)
     ctypes.set_errno(0)
     ret = libc.syscall(SYS_io_uring_register, ctypes.c_int(-1), IORING_REGISTER_RESTRICTIONS,
@@ -175,7 +199,14 @@ def main():
     try:
         with Ring() as ring:
             report["setup"] = "ok"
-            report["opcodes"] = {name: ring.submit(opcode)[0] for name, opcode in OPCODES}
+            outcomes = {}
+            results = {}
+            for name, opcode in OPCODES:
+                kind, result = ring.submit(opcode)
+                outcomes[name] = kind
+                results[name] = result
+            report["opcodes"] = outcomes
+            report["results"] = results
     except OSError as error:
         report["setup"] = "denied:%d" % error.errno
         print(json.dumps(report))

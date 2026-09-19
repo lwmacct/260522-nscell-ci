@@ -86,6 +86,7 @@ __main() {
   docker run -d \
     --name "${_io_uring_policy_name}-exec" \
     --runtime nscell \
+    --annotation io.backend.security.profile=dind \
     --label io.backend.security.profile=dind \
     "$_oci_base_image" \
     sleep 120 >/dev/null
@@ -98,6 +99,7 @@ __main() {
   docker create \
     --name "${_io_uring_policy_name}-init" \
     --runtime nscell \
+    --annotation io.backend.security.profile=dind \
     --label io.backend.security.profile=dind \
     "$_oci_base_image" \
     python3 "$_probe_container_path" matrix >/dev/null
@@ -110,6 +112,7 @@ __main() {
   docker run -d \
     --name "${_io_uring_policy_name}-closed" \
     --runtime nscell \
+    --annotation io.backend.security.profile=default \
     --label io.backend.security.profile=default \
     "$_oci_base_image" \
     sleep 120 >/dev/null
