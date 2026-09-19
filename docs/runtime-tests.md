@@ -58,7 +58,7 @@ listed separately because only an explicit `targets=` selection reaches them.
 | `kernel-capability-smoke` | Linux 7 native ABI diagnostic set |
 | `kubernetes-k3s` | nested k3s node and inner pod lifecycle |
 | `new-mount-api-deny` | mediated new-mount API policy, including the Linux 7.0 statmount fields a permitted profile must receive |
-| `oci-lifecycle` | OCI create/start/exec/kill/delete lifecycle |
+| `oci-lifecycle` | OCI create/start/exec/kill/delete lifecycle and the daemon's teardown observation, including the namespace a host holder keeps alive |
 | `oci-mount-semantics` | mount identity, propagation, and visibility |
 | `procfs-cpu` | CPU procfs presentation and cpuset resources |
 | `procfs-memory` | memory procfs presentation and OOM behavior |
