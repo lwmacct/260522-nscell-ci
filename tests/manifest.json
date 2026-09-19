@@ -6,6 +6,7 @@
     {"name":"daemon-crash-recovery","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5}}},
     {"name":"daemon-dial-retry","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5}}},
     {"name":"daemon-fail-stop","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5}}},
+    {"name":"daemon-fail-stop-docker","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":6}}},
     {"name":"docker-in-docker","kind":"workload","modes":{"vm":{"class":"runtime","timeout_minutes":10}}},
     {"name":"kubernetes-k3s","kind":"workload","modes":{"vm":{"class":"runtime","timeout_minutes":10}}},
     {"name":"oci-lifecycle","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5,"group":"light"}}},

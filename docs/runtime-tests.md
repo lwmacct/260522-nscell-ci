@@ -37,6 +37,7 @@ explicit targets run one workload per VM.
 | `daemon-crash-recovery` | crash-time persistent state and recovery |
 | `daemon-dial-retry` | control connection retry behavior |
 | `daemon-fail-stop` | fail-stop cleanup and daemon readiness |
+| `daemon-fail-stop-docker` | fail-stop reap of a container whose runtime state root is the shim's |
 | `docker-in-docker` | nested Docker daemon and inner container lifecycle |
 | `fuse-copy-file-range` | FUSE data-path behavior |
 | `fuse-io-uring-probe` | explicit-selection-only disabled baseline plus enabled register/commit/teardown probe inside an isolated disposable VM |
