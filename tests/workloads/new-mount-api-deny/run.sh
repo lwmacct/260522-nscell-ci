@@ -21,7 +21,7 @@ __deny_output_has_case() {
   local _output="$1"
   local _syscall_name
 
-  for _syscall_name in open_tree fspick fsopen fsconfig fsmount move_mount mount_setattr statmount listmount; do
+  for _syscall_name in open_tree fspick fsopen fsconfig fsmount move_mount mount_setattr; do
     if [[ "$_output" != *"new-mount-api-deny-ok:${_syscall_name}"* ]]; then
       echo "missing explicit deny result for ${_syscall_name}" >&2
       return 1
@@ -32,24 +32,46 @@ __deny_output_has_case() {
 __daemon_has_decision() {
   local _syscall_name="$1"
   local _decision="$2"
+  local _deadline _matches
 
-  sudo grep -F 'New mount API decision' "$_daemon_log" |
-    grep -F "syscall=${_syscall_name}" |
-    grep -F "decision=${_decision}" |
-    grep -q -F 'auditSource=seccomp-new-mount'
+  # The daemon log is read while the mediator is still writing it, so the
+  # decision for a syscall can land after the container returned: poll instead
+  # of asserting on one snapshot. The pipeline is captured rather than ended in
+  # `grep -q`, which would SIGPIPE the earlier stages under `pipefail`.
+  _deadline=$((SECONDS + 15))
+  while ((SECONDS <= _deadline)); do
+    _matches="$(sudo grep -F 'New mount API decision' "$_daemon_log" |
+      grep -F "syscall=${_syscall_name}" |
+      grep -F "decision=${_decision}" |
+      grep -F 'auditSource=seccomp-new-mount' || true)"
+    if [[ -n "$_matches" ]]; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  return 1
 }
 
 __daemon_has_capability_identity() {
   local _syscall_name="$1"
+  local _deadline _matches
 
-  sudo grep -F 'New mount API decision' "$_daemon_log" |
-    grep -F "syscall=${_syscall_name}" |
-    grep -F 'decision=allow' |
-    grep -F 'capabilityId=' |
-    grep -F 'callerTgid=' |
-    grep -F 'proxyFd=' |
-    grep -F 'socketCookie=' |
-    grep -F 'seccompFd=' >/dev/null
+  _deadline=$((SECONDS + 15))
+  while ((SECONDS <= _deadline)); do
+    _matches="$(sudo grep -F 'New mount API decision' "$_daemon_log" |
+      grep -F "syscall=${_syscall_name}" |
+      grep -F 'decision=allow' |
+      grep -F 'capabilityId=' |
+      grep -F 'callerTgid=' |
+      grep -F 'proxyFd=' |
+      grep -F 'socketCookie=' |
+      grep -F 'seccompFd=' || true)"
+    if [[ -n "$_matches" ]]; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  return 1
 }
 
 __run_deny_case() {
@@ -97,13 +119,10 @@ machine = platform.machine()
 if machine not in numbers:
     raise SystemExit(f"unsupported architecture: {machine}")
 
+# mount-table queries (statmount/listmount) are mediated and answered for every
+# container now, so they belong to the authorized case; what is left here is the
+# request the mediator has to refuse on its own.
 libc = ctypes.CDLL(None, use_errno=True)
-ns_fd = os.open("/proc/self/ns/mnt", os.O_RDONLY)
-ns_info = bytearray(16)
-fcntl.ioctl(ns_fd, (2 << 30) | (16 << 16) | (0xB7 << 8) | 10, ns_info, True)
-namespace_id = struct.unpack_from("=Q", ns_info, 8)[0]
-os.close(ns_fd)
-
 for name, number in numbers[machine].items():
     if name in ("statmount", "listmount"):
         continue
@@ -113,59 +132,13 @@ for name, number in numbers[machine].items():
     if result != -1 or errno != 1:
         raise SystemExit(f"{name}: result={result} errno={errno}, want result=-1 errno=1(EPERM)")
     print(f"new-mount-api-deny-ok:{name}")
-
-query_numbers = numbers[machine]
-ids = (ctypes.c_uint64 * 64)()
-list_request = struct.pack(
-    "=IIQQQ",
-    32,
-    0,
-    0xFFFFFFFFFFFFFFFF,
-    0,
-    namespace_id,
-)
-ctypes.set_errno(0)
-list_result = libc.syscall(
-    ctypes.c_long(query_numbers["listmount"]),
-    list_request,
-    ids,
-    ctypes.c_size_t(64),
-    ctypes.c_uint(0),
-)
-if list_result != -1 or ctypes.get_errno() != 1:
-    raise SystemExit(f"listmount: result={list_result} errno={ctypes.get_errno()}, want EPERM")
-print("new-mount-api-deny-ok:listmount")
-
-stat_buffer = ctypes.create_string_buffer(4096)
-# Ask for every Linux 7.0 statmount field: a profile without the new mount query
-# API must refuse the call whatever it asks for, not only the fields that
-# existed before.
-stat_request = struct.pack(
-    "=IIQQQ",
-    32,
-    0,
-    1,
-    0x7FFF,
-    namespace_id,
-)
-ctypes.set_errno(0)
-stat_result = libc.syscall(
-    ctypes.c_long(query_numbers["statmount"]),
-    stat_request,
-    stat_buffer,
-    ctypes.c_size_t(len(stat_buffer)),
-    ctypes.c_uint(0),
-)
-if stat_result != -1 or ctypes.get_errno() != 1:
-    raise SystemExit(f"statmount: result={stat_result} errno={ctypes.get_errno()}, want EPERM")
-print("new-mount-api-deny-ok:statmount")
 PY
   )"
   printf 'new-mount-api-deny-output[%s]=%q\n' "$_case" "$_output"
   __deny_output_has_case "$_output" || return 1
 
   local _syscall_name
-  for _syscall_name in open_tree fspick fsopen fsconfig fsmount move_mount mount_setattr statmount listmount; do
+  for _syscall_name in open_tree fspick fsopen fsconfig fsmount move_mount mount_setattr; do
     if ! __daemon_has_decision "$_syscall_name" deny; then
       echo "daemon did not record structured deny for ${_syscall_name}" >&2
       sudo tail -100 "$_daemon_log" >&2
