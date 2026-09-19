@@ -686,6 +686,90 @@ __run_system_container() {
   __check_proc_sys "$_name"
 }
 
+__check_kernel_view_bind_admission() {
+  local _work_dir _log_start _status _log_file _label _mount _case
+  local _name_prefix="${_container_security_policy_name}-kernel-view"
+
+  __log "checking host kernel-view bind admission"
+  _work_dir="${_test_root}/kernel-view-bind"
+  install -d -m 0755 "${_work_dir}/data"
+  printf 'positive-control\n' >"${_work_dir}/data/marker"
+  _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
+
+  # `-v /proc:/host:ro` (and the /sys variant) is the classic privileged-container
+  # escape recipe: NSCell must refuse it by policy, not inside the ID-map step.
+  for _case in "proc:/proc:/host:ro" "sys:/sys:/hostsys:ro"; do
+    _label="${_case%%:*}"
+    _mount="${_case#*:}"
+    _log_file="${_log_root}/kernel-view-bind-${_label}.log"
+    docker rm -f "${_name_prefix}-${_label}" >/dev/null 2>&1 || true
+    set +e
+    timeout 120 docker run --name "${_name_prefix}-${_label}" --runtime nscell \
+      -v "$_mount" "$_container_security_policy_image" /bin/sleep 1 >"$_log_file" 2>&1
+    _status="$?"
+    set -e
+    if ((_status == 0)); then
+      echo "binding the host ${_label} was allowed: ${_mount}" >&2
+      exit 1
+    fi
+    if ! grep -q "nscell-managed kernel view" "$_log_file"; then
+      echo "host ${_label} bind was refused without the policy reason: ${_mount}" >&2
+      cat "$_log_file" >&2
+      exit 1
+    fi
+    if grep -qE "open_tree_attr|ID-map mount on host" "$_log_file"; then
+      echo "host ${_label} bind reached the ID-map step: ${_mount}" >&2
+      cat "$_log_file" >&2
+      exit 1
+    fi
+    docker rm -f "${_name_prefix}-${_label}" >/dev/null 2>&1 || true
+  done
+
+  # A host tree that contains procfs/sysfs cannot be ID-mapped recursively; the
+  # refusal has to name that mount instead of the source's own filesystem.
+  _log_file="${_log_root}/kernel-view-bind-tree.log"
+  docker rm -f "${_name_prefix}-tree" >/dev/null 2>&1 || true
+  set +e
+  timeout 120 docker run --name "${_name_prefix}-tree" --runtime nscell \
+    -v /:/host:ro "$_container_security_policy_image" /bin/sleep 1 >"$_log_file" 2>&1
+  _status="$?"
+  set -e
+  if ((_status == 0)); then
+    echo "binding the host root filesystem was allowed" >&2
+    exit 1
+  fi
+  if ! grep -qE "cannot be ID-mapped: /(proc|sys) is a (procfs|sysfs) mount" "$_log_file"; then
+    echo "host root bind was refused without naming the blocking mount" >&2
+    cat "$_log_file" >&2
+    exit 1
+  fi
+  docker rm -f "${_name_prefix}-tree" >/dev/null 2>&1 || true
+
+  # Positive control: an ordinary host directory bind still works, the
+  # container's own /proc stays container-local, and binding /proc inside the
+  # container is still denied by the mount policy.
+  timeout 120 docker run --rm --runtime nscell -v "${_work_dir}/data:/data:ro" \
+    "$_container_security_policy_image" sh -c '
+			cat /data/marker
+			mkdir -p /tmp/proc-bind
+			if mount --bind /proc /tmp/proc-bind 2>/dev/null; then
+				echo "container bind of /proc unexpectedly succeeded" >&2
+				exit 1
+			fi
+			case "$(tr -d "\0" </proc/1/cmdline)" in
+				*systemd*) echo "/proc/1 is the host init" >&2; exit 1 ;;
+			esac
+			echo kernel-view-bind-positive-ok
+		'
+
+  if tail -n +"$((_log_start + 1))" "$_daemon_log" 2>/dev/null | grep -q "ID-map mount on host"; then
+    echo "host bind admission produced an ID-map failure in the daemon log" >&2
+    exit 1
+  fi
+
+  echo "kernel-view-bind-admission-ok"
+}
+
 __main() {
   if [[ "${1:-}" == "cleanup" ]]; then
     __require_cmd docker
@@ -696,7 +780,10 @@ __main() {
       "${_container_security_policy_name}-system" \
       "${_container_security_policy_name}-host-target" \
       "${_container_security_policy_name}-task-a" \
-      "${_container_security_policy_name}-task-b" >/dev/null 2>&1 || true
+      "${_container_security_policy_name}-task-b" \
+      "${_container_security_policy_name}-kernel-view-proc" \
+      "${_container_security_policy_name}-kernel-view-sys" \
+      "${_container_security_policy_name}-kernel-view-tree" >/dev/null 2>&1 || true
     return
   fi
 
@@ -708,6 +795,7 @@ __main() {
 
   __require_bpf_lsm
   __check_host_root_mapping_rejected
+  __check_kernel_view_bind_admission
   __check_host_bpf_gate_exemption
   __check_host_kernel_interface_gate_exemption
   __check_host_task_gate_exemption
