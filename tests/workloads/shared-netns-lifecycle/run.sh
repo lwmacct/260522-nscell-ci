@@ -45,6 +45,7 @@ __main() {
     --name "$_shared_netns_primary_name" \
     --hostname shared-netns-primary \
     --runtime nscell \
+    --annotation io.backend.security.profile=default \
     --label io.backend.security.profile=default \
     "$_oci_base_image" \
     /bin/sh -c 'mkdir /www; printf shared-netns-ok > /www/index.html; exec python3 -m http.server 8080 --directory /www' \
@@ -61,6 +62,7 @@ __main() {
     --name "$_shared_netns_secondary_name" \
     --runtime nscell \
     --network "container:$_shared_netns_primary_name" \
+    --annotation io.backend.security.profile=default \
     --label io.backend.security.profile=default \
     "$_oci_base_image" \
     tail -f /dev/null >/dev/null

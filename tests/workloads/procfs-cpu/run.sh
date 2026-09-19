@@ -45,6 +45,7 @@ __main() {
     --hostname "${_procfs_cpu_name}-nolimit" \
     --runtime nscell \
     --cgroupns=private \
+    --annotation io.backend.security.profile=default \
     --label io.backend.security.profile=default \
     -e "CI_PROCFS_CPU_EXPECT_VISIBLE_FROM_AFFINITY=1" \
     -e "CI_PROCFS_CPU_EXPECT_AFFINITY_MATCH=1" \
@@ -57,6 +58,7 @@ __main() {
     --runtime nscell \
     --cgroupns=private \
     --cpus "$_procfs_cpu_quota_cpus" \
+    --annotation io.backend.security.profile=default \
     --label io.backend.security.profile=default \
     -e "CI_PROCFS_CPU_EXPECT_VISIBLE=1" \
     -e "CI_PROCFS_CPU_EXPECT_AFFINITY_MATCH=1" \
@@ -76,6 +78,7 @@ __main() {
     --runtime nscell \
     --cgroupns=private \
     --cpus "$_procfs_cpu_quota_cpus" \
+    --annotation io.backend.security.profile=default \
     --label io.backend.security.profile=default \
     -e "CI_PROCFS_CPU_EXPECT_VISIBLE=1" \
     -e "CI_PROCFS_CPU_EXPECT_AFFINITY_MATCH=1" \
