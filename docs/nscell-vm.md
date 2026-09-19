@@ -71,11 +71,13 @@ and the requested NSCell tag to immutable OCI digests. Only
 run record the exact image it validated and makes a missing or misspelled tag
 fail during matrix preparation instead of after every VM has booted. The run
 summary lists the requested reference and the resolved digest.
-The standard image's Docker store contains the pinned Python Alpine image used
-by Python-derived workloads and by the lightweight OCI-bundle workloads. The
-smoke target runs that preloaded image with `--pull=never`; it does not provide
-an offline-guest guarantee because the NSCell OCI image is still fetched inside
-the VM. Uncached heavyweight workload images are also fetched normally. Test
+The standard image's Docker store contains the pinned `python:3.14-alpine` image
+used by Python-derived workloads and by the lightweight OCI-bundle workloads.
+Its minor version tracks the guest's system `python3`, so a probe sees the same
+Python line inside and outside its container. The smoke target runs that
+preloaded image with `--pull=never`; it does not provide an offline-guest
+guarantee because the NSCell OCI image is still fetched inside the VM. Uncached
+heavyweight workload images are also fetched normally. Test
 assets and a CI repository snapshot are exposed through one read-only Incus
 `9p` directory share. The runner explicitly selects `9p` because the default
 `virtiofs` transport conflicts with PCI allocation on GitHub-hosted runners.
