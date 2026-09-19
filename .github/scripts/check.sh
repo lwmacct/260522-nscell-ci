@@ -42,7 +42,7 @@ PY
 }
 
 __check_manifest() {
-	local _suite _grouping _selection
+	local _suite _grouping _selection _targets _token
 
 	bash tests/manifest.sh validate
 	for _grouping in isolated bundled; do
@@ -60,30 +60,59 @@ __check_manifest() {
 				) and
 				((map(.targets[]) | length) == (map(.targets[]) | unique | length))
 			' <<<"${_selection}" >/dev/null
+			# Every entry the matrix will carry has to mean the same thing
+			# here as it does in the manifest.
+			while IFS=$'\t' read -r _token _targets; do
+				bash tests/manifest.sh check-selection "${_token}" "${_targets}" >/dev/null
+			done < <(jq -r '.[] | "\(.name)\t\(.targets | tojson)"' <<<"${_selection}")
 		done
 	done
 
-	for _grouping in isolated bundled; do
-		_selection="$(
-			bash tests/manifest.sh select vm smoke \
-				kernel-capability-smoke,fuse-copy-file-range,new-mount-api-deny "${_grouping}"
-		)"
-		jq -e '
-			if $grouping == "bundled" then
-				type == "array" and length == 1 and
-				.[0].targets == [
-					"fuse-copy-file-range",
-					"kernel-capability-smoke",
-					"new-mount-api-deny"
-				]
-			else
-				type == "array" and length == 3 and
-				all(.[]; (.targets | length) == 1)
-			end
-		' --arg grouping "${_grouping}" <<<"${_selection}" >/dev/null
-	done
+	# An explicit target list is the debugging path: one target per entry, and
+	# bundling it would need a group token that means several targets.
+	_selection="$(
+		bash tests/manifest.sh select vm smoke \
+			kernel-capability-smoke,fuse-copy-file-range,new-mount-api-deny isolated
+	)"
+	jq -e '
+		type == "array" and length == 3 and
+		all(.[]; (.targets | length) == 1)
+	' <<<"${_selection}" >/dev/null
+	if bash tests/manifest.sh select vm smoke kernel-capability-smoke bundled >/dev/null 2>&1; then
+		echo "an explicit target list must not accept the bundled grouping" >&2
+		return 1
+	fi
 
 	__check_suite_composition
+}
+
+__check_manifest_naming() {
+	local _tmp _manifest _case _expected _filter _output
+
+	_tmp="$(mktemp -d)"
+	_manifest="${_tmp}/manifest.json"
+
+	while IFS=$'\t' read -r _case _expected _filter; do
+		jq "${_filter}" tests/manifest.json >"${_manifest}" || return 1
+		if _output="$(NSCELL_CI_MANIFEST="${_manifest}" bash tests/manifest.sh validate-schema 2>&1)"; then
+			echo "manifest schema accepted ${_case}" >&2
+			return 1
+		fi
+		if [[ "${_output}" != *"${_expected}"* ]]; then
+			echo "rejecting ${_case} reported ${_output}" >&2
+			return 1
+		fi
+	done <<'EOF'
+an underscore in a target name	target name must match	.targets += [{"name":"io_uring-policy","kind":"workload","modes":{"vm":{"class":"policy","timeout_minutes":5}}}]
+a target name that is a command word	target name must not be a command word	.targets += [{"name":"all","kind":"workload","modes":{"vm":{"class":"policy","timeout_minutes":5}}}]
+a group that reuses a target name	group must not reuse a target name	.targets += [{"name":"naming-probe","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5,"group":"daemon-fail-stop"}}}]
+a group that is a command word	group must not be a command word	.targets += [{"name":"naming-probe","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5,"group":"cleanup"}}}]
+EOF
+
+	# Without this the rejections above would also pass on a missing manifest.
+	cp tests/manifest.json "${_manifest}"
+	NSCELL_CI_MANIFEST="${_manifest}" bash tests/manifest.sh validate-schema
+	rm -rf "${_tmp}"
 }
 
 __suite_targets() {
@@ -202,6 +231,7 @@ __main() {
 	__check_shell
 	__check_python
 	__check_manifest
+	__check_manifest_naming
 	__check_python_image_pin
 	__check_vm_guest_image_policy
 	__check_retired_gate_mode

@@ -10,38 +10,12 @@ _oci_base_image="${NSCELL_CI_OCI_BASE_IMAGE:-docker.io/library/python:3.12-alpin
 declare -a _test_targets=()
 
 __main() {
-  local _target
+  local _manifest="${GITHUB_WORKSPACE:-.}/tests/manifest.sh"
 
-  if [[ "${_test_target}" != smoke &&
-    ! "${_test_target}" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
-    echo "invalid VM test target: ${_test_target}" >&2
-    return 2
-  fi
-  if [[ "${_test_target}" == all ]]; then
-    echo "run-vm-workload accepts one concrete workload, not all" >&2
-    return 2
-  fi
-  if ! jq -e '
-    type == "array" and
-    length > 0 and
-    all(.[]; type == "string" and test("^[a-z0-9][a-z0-9-]*$")) and
-    (unique | length) == length
-  ' <<<"${_test_targets_json}" >/dev/null; then
-    echo "invalid VM test target array: ${_test_targets_json}" >&2
-    return 2
-  fi
+  # The manifest owns the token rule and the meaning of a selection, so ask it
+  # instead of restating either one here.
+  bash "${_manifest}" check-selection "${_test_target}" "${_test_targets_json}" >/dev/null
   mapfile -t _test_targets < <(jq -r '.[]' <<<"${_test_targets_json}")
-  if [[ "${_test_target}" == smoke ]] &&
-    { ((${#_test_targets[@]} != 1)) || [[ "${_test_targets[0]}" != smoke ]]; }; then
-    echo "the smoke target must run alone" >&2
-    return 2
-  fi
-  for _target in "${_test_targets[@]}"; do
-    if [[ "${_target}" == all ]]; then
-      echo "run-vm-workload accepts concrete workloads, not all" >&2
-      return 2
-    fi
-  done
 
 sudo incus exec "${_vm_name}" -- \
   env \

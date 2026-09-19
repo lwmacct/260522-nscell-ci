@@ -29,6 +29,16 @@ require an explicit `targets=` selection. Leaving targets empty runs the
 requested suite and bundles targets that share a manifest group into one VM;
 explicit targets run one workload per VM.
 
+A target name and a group name are one namespace: both are selection tokens, so
+both are lowercase kebab-case (`^[a-z0-9][a-z0-9-]*$`), neither may be a command
+word (`all`, `cleanup`, `parallel`, `run`), and a group may not reuse a target
+name. That token becomes the matrix entry, the job, the VM, the diagnostics
+artifact, and the guest dispatch argument, so one token must always select the
+same targets. `tests/manifest.sh` owns the rule: it rejects a manifest that
+breaks it and re-derives the targets behind a token before a VM boots. An
+explicit target list runs one target per VM, because no group token stands for
+that entry.
+
 ## Targets
 
 The table lists the targets the `gate` suite composes. `experiment` targets are
