@@ -44,6 +44,15 @@ __assert_admitted_set() {
     echo "an allowed opcode was refused: ${_json}" >&2
     return 1
   }
+  # The event-loop family is what makes the ring usable by an async runtime, so
+  # the policy has to admit these as well - and the poll/timeout pair is driven
+  # for real below, because being admitted is not the same as completing.
+  jq -e '[.opcodes.POLL_ADD, .opcodes.POLL_REMOVE, .opcodes.TIMEOUT,
+    .opcodes.TIMEOUT_REMOVE, .opcodes.LINK_TIMEOUT] | all(. == "admitted")' \
+    <<<"${_json}" >/dev/null || {
+    echo "an event-loop opcode was refused: ${_json}" >&2
+    return 1
+  }
 }
 
 __assert_refused_set() {
@@ -94,6 +103,16 @@ __main() {
   _exec_json="$(docker exec "${_io_uring_policy_name}-exec" python3 "$_probe_container_path" matrix)"
   __assert_admitted_set "$_exec_json"
   __assert_refused_set "$_exec_json"
+
+  __log "driving a real poll and timeout through the ring"
+  _event_json="$(
+    docker exec "${_io_uring_policy_name}-exec" python3 "$_probe_container_path" eventloop
+  )"
+  printf 'io-uring-eventloop=%s\n' "$_event_json"
+  jq -e '.poll == "pollin" and .timeout == "etime"' <<<"${_event_json}" >/dev/null || {
+    echo "the ring could not drive an event loop: ${_event_json}" >&2
+    return 1
+  }
 
   __log "probing the dind policy with the probe as the container init"
   docker create \

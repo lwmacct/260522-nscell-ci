@@ -7,11 +7,13 @@ object so the workload can assert policy without parsing prose.
 Modes:
   setup   only try io_uring_setup
   matrix  submit one opcode per ring and try to register a restriction
+  eventloop  drive a real poll and timeout, the opcodes an async runtime needs
 """
 
 import ctypes
 import json
 import mmap
+import os
 import struct
 import sys
 import time
@@ -38,12 +40,18 @@ OPCODES = [
     ("READ", 22),
     ("WRITE", 23),
     ("FSYNC", 3),
+    ("POLL_ADD", 6),
+    ("POLL_REMOVE", 7),
+    ("TIMEOUT", 11),
+    ("TIMEOUT_REMOVE", 12),
+    ("LINK_TIMEOUT", 15),
     ("OPENAT2", 28),
     ("SETXATTR", 42),
     ("URING_CMD", 46),
 ]
 
 EACCES = 13
+ETIME = 62
 
 
 class SQOffsets(ctypes.Structure):
@@ -115,7 +123,7 @@ class Ring(object):
             import os
             os.close(self.fd)
 
-    def submit(self, opcode, wait_seconds=2.0):
+    def submit(self, opcode, wait_seconds=2.0, configure=None):
         """Submit one SQE and classify what the ring did with it.
 
         Returns (kind, detail) where kind is one of "admitted", "denied" (the
@@ -130,6 +138,8 @@ class Ring(object):
         sqe[0] = opcode
         struct.pack_into("<i", sqe, 4, -1)
         struct.pack_into("<Q", sqe, 32, 0x1000 + opcode)
+        if configure is not None:
+            configure(sqe)
         self.sqes.seek(index * SQE_SIZE)
         self.sqes.write(bytes(sqe))
         struct.pack_into("<I", self.sq_ring, self.params.sq_off.array + index * 4, index)
@@ -193,6 +203,46 @@ def main():
                 report["features"] = ring.params.features
         except OSError as error:
             report["setup"] = "denied:%d" % error.errno
+        print(json.dumps(report))
+        return 0
+
+    if mode == "eventloop":
+        # The poll/timeout family is what makes the ring usable by an event loop,
+        # so drive both for real: a poll that must report readable data, and a
+        # timeout that must expire. Passing the restriction is not enough - the
+        # opcode has to complete.
+        with Ring() as ring:
+            report["setup"] = "ok"
+            read_fd, write_fd = os.pipe()
+            os.write(write_fd, b"x")
+
+            def poll_sqe(sqe):
+                struct.pack_into("<i", sqe, 4, read_fd)
+                struct.pack_into("<I", sqe, 28, 1)  # POLLIN
+
+            kind, detail = ring.submit(6, configure=poll_sqe)
+            if detail.get("res") == 1:
+                report["poll"] = "pollin"
+            else:
+                report["poll"] = "%s:%s" % (kind, detail.get("res"))
+
+            # struct __kernel_timespec { s64 tv_sec; s64 tv_nsec; }
+            timespec = ctypes.create_string_buffer(16)
+            struct.pack_into("<qq", timespec, 0, 0, 100_000_000)
+            address = ctypes.addressof(timespec)
+
+            def timeout_sqe(sqe):
+                struct.pack_into("<Q", sqe, 16, address)
+                struct.pack_into("<I", sqe, 24, 1)  # one timespec
+
+            kind, detail = ring.submit(11, wait_seconds=3.0, configure=timeout_sqe)
+            if detail.get("res") == -ETIME:
+                report["timeout"] = "etime"
+            else:
+                report["timeout"] = "%s:%s" % (kind, detail.get("res"))
+
+            os.close(read_fd)
+            os.close(write_fd)
         print(json.dumps(report))
         return 0
 
