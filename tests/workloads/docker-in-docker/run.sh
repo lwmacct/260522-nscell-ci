@@ -74,6 +74,15 @@ __wait_for_inner_docker() {
 	"
 }
 
+__run_inner_smoke() {
+  local _name="$1"
+
+  # The container rejects every NSCELL_* variable, so the probe image name
+  # travels under a name of its own.
+  docker exec -e "DIND_SMOKE_IMAGE=${_inner_nginx_image}" \
+    "$_name" nscell-ci-docker-in-docker-smoke
+}
+
 __main() {
   local _root="${_volume_root}/docker-in-docker"
 
@@ -108,7 +117,8 @@ __main() {
 
   __log "checking inner docker"
   __wait_for_inner_docker "$_docker_in_docker_name"
-  docker exec "$_docker_in_docker_name" nscell-ci-docker-in-docker-smoke
+  __load_image_into_docker_container "$_docker_in_docker_name" "$_inner_nginx_image"
+  __run_inner_smoke "$_docker_in_docker_name"
 
   __log "checking host docker top"
   docker top "$_docker_in_docker_name" >/dev/null
@@ -116,7 +126,7 @@ __main() {
   __log "checking Docker-in-Docker restart"
   docker restart -t 1 "$_docker_in_docker_name"
   __wait_for_inner_docker "$_docker_in_docker_name" "restart "
-  docker exec "$_docker_in_docker_name" nscell-ci-docker-in-docker-smoke
+  __run_inner_smoke "$_docker_in_docker_name"
 
   __log "checking Docker-in-Docker stop/start"
   docker stop -t 1 "$_docker_in_docker_name"
@@ -125,7 +135,6 @@ __main() {
 
   __log "checking inner nginx with docker load cache"
   __wait_for_inner_docker "$_docker_in_docker_name"
-  __load_image_into_docker_container "$_docker_in_docker_name" "$_inner_nginx_image"
   docker exec "$_docker_in_docker_name" sh -lc "docker rm -f nginx >/dev/null 2>&1 || true"
   docker exec "$_docker_in_docker_name" sh -lc "docker run -d -p 80:80 --name=nginx '$_inner_nginx_image' >/dev/null"
   docker exec "$_docker_in_docker_name" sh -lc 'docker ps --filter name=nginx --format "inner-nginx {{.Status}} {{.Ports}}"'
