@@ -58,6 +58,7 @@ import signal
 import socket
 import struct
 import threading
+import time
 
 libc = ctypes.CDLL(None, use_errno=True)
 
@@ -541,6 +542,135 @@ if pidfd < 0:
     raise OSError(errno.EBADF, "pidfd_open returned an invalid descriptor")
 os.close(pidfd)
 
+# NS_GET_ID is the kernel-owned namespace identity. It has to agree with the
+# mount namespace id NS_MNT_GET_INFO reports, and it has to work for namespace
+# types that have no such ioctl of their own.
+def namespace_id(fd):
+    raw = bytearray(8)
+    fcntl.ioctl(fd, (2 << 30) | (8 << 16) | (0xB7 << 8) | 13, raw, True)
+    return struct.unpack_from("=Q", raw, 0)[0]
+
+
+mount_fd = os.open("/proc/self/ns/mnt", os.O_RDONLY | os.O_CLOEXEC)
+try:
+    if namespace_id(mount_fd) != info.mnt_ns_id:
+        raise SystemExit("NS_GET_ID disagrees with NS_MNT_GET_INFO for the mount namespace")
+finally:
+    os.close(mount_fd)
+
+for ns_type in ("net", "user", "pid"):
+    fd = os.open(f"/proc/self/ns/{ns_type}", os.O_RDONLY | os.O_CLOEXEC)
+    try:
+        if namespace_id(fd) == 0:
+            raise SystemExit(f"NS_GET_ID returned zero for the {ns_type} namespace")
+    finally:
+        os.close(fd)
+
+# nsfs exports file handles keyed by {ns_id, ns_type, ns_inum}. A namespace must
+# be reopenable from that handle without any path, and from the identity alone
+# (type and inode unset, which the kernel resolves through its unified namespace
+# tree) - but only while it still has a user.
+name_to_handle_at = {"x86_64": 303, "aarch64": 264}.get(machine)
+open_by_handle_at = {"x86_64": 304, "aarch64": 265}.get(machine)
+if name_to_handle_at is None or open_by_handle_at is None:
+    raise SystemExit(f"unsupported architecture for the nsfs handle probe: {machine}")
+
+AT_EMPTY_PATH = 0x1000
+FILEID_NSFS = 0xF1
+MAX_HANDLE_SZ = 128
+CLONE_NEWNS_FLAG = 1 << 17
+
+
+def nsfs_handle(fd):
+    buffer = bytearray(8 + MAX_HANDLE_SZ)
+    struct.pack_into("=I", buffer, 0, MAX_HANDLE_SZ)
+    mount_id_value = ctypes.c_int(0)
+    syscall(
+        name_to_handle_at,
+        ctypes.c_int(fd),
+        ctypes.c_char_p(b""),
+        (ctypes.c_char * len(buffer)).from_buffer(buffer),
+        ctypes.byref(mount_id_value),
+        ctypes.c_int(AT_EMPTY_PATH),
+    )
+    handle_bytes, handle_type = struct.unpack_from("=Ii", buffer, 0)
+    if handle_type != FILEID_NSFS or handle_bytes != 16:
+        raise SystemExit(
+            f"nsfs handle has type={handle_type:#x} bytes={handle_bytes}, want 0xf1/16"
+        )
+    return bytes(buffer[8 : 8 + handle_bytes])
+
+
+def reopen_nsfs_handle(mountdir_fd, handle):
+    request = bytearray(8 + len(handle))
+    struct.pack_into("=Ii", request, 0, len(handle), FILEID_NSFS)
+    request[8:] = handle
+    return syscall(
+        open_by_handle_at,
+        ctypes.c_int(mountdir_fd),
+        (ctypes.c_char * len(request)).from_buffer(request),
+        ctypes.c_int(os.O_RDONLY | os.O_CLOEXEC),
+    )
+
+
+mount_fd = os.open("/proc/self/ns/mnt", os.O_RDONLY | os.O_CLOEXEC)
+try:
+    handle = nsfs_handle(mount_fd)
+    handle_ns_id, handle_ns_type, _ = struct.unpack_from("=QII", handle, 0)
+    if handle_ns_id != info.mnt_ns_id or handle_ns_type != CLONE_NEWNS_FLAG:
+        raise SystemExit(
+            f"nsfs handle identity mismatch: id={handle_ns_id} type={handle_ns_type:#x}"
+        )
+
+    for label, candidate in (
+        ("decoded", handle),
+        ("identity-only", struct.pack("=QII", info.mnt_ns_id, 0, 0)),
+    ):
+        reopened = reopen_nsfs_handle(mount_fd, candidate)
+        try:
+            if namespace_id(reopened) != info.mnt_ns_id:
+                raise SystemExit(f"a {label} nsfs handle reopened a different namespace")
+        finally:
+            os.close(reopened)
+finally:
+    os.close(mount_fd)
+
+# A namespace with no user left must not come back: the handle is data, not a
+# reference, so once the last descriptor goes away the kernel drops the
+# namespace from its trees and refuses to reopen it. This is the boundary that
+# says a handle proves a namespace exists, not that one ever existed.
+#
+# The namespace is built with OPEN_TREE_NAMESPACE rather than unshare(2) for a
+# reason: unshare(CLONE_NEWNET) fails with EINVAL in a multithreaded process,
+# and this probe has already started threads by now.
+gone_namespace_fd = syscall(
+    428,
+    ctypes.c_int(-100),
+    b"/",
+    ctypes.c_uint(OPEN_TREE_NAMESPACE | OPEN_TREE_CLOEXEC),
+)
+try:
+    gone_handle = nsfs_handle(gone_namespace_fd)
+finally:
+    os.close(gone_namespace_fd)
+
+deadline = time.time() + 5
+while True:
+    mount_fd = os.open("/proc/self/ns/mnt", os.O_RDONLY | os.O_CLOEXEC)
+    try:
+        try:
+            reopened = reopen_nsfs_handle(mount_fd, gone_handle)
+        except OSError as error:
+            if error.errno not in (errno.ESTALE, errno.ENOENT, errno.EINVAL):
+                raise
+            break
+        os.close(reopened)
+        if time.time() >= deadline:
+            raise SystemExit("nsfs kept reopening a namespace that no longer has a user")
+        time.sleep(0.05)
+    finally:
+        os.close(mount_fd)
+
 print(
     "kernel-capability-probe-ok "
     f"release={platform.release()} mount_id={mount_id} mount_ns={info.mnt_ns_id} "
@@ -549,7 +679,8 @@ print(
     "proc_pidns=available detached_statmount=enoent "
     f"detached_statx={detached_proc_statx_mount}/{detached_tmpfs_statx_mount} "
     "fuse_sync_init=available "
-    f"listns={namespace_count}"
+    f"listns={namespace_count} ns_get_id=available nsfs_handle=available "
+    "nsfs_handle_identity_only=available nsfs_inactive_refused=available"
 )
 PY
 }
