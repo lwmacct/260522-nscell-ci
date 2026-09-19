@@ -334,12 +334,22 @@ __main() {
 	done
 
 	__log "measuring the per-request cost of both transports"
-	_benchmark_variants=(baseline1 clients4 coop4 defer4)
+	# dispatch4/readers4 vary how the classic server answers. This VM has four
+	# CPUs, so its clients and its server readers share them and the shape
+	# comparison is not readable here; these variants only keep the flags
+	# exercised. Measure the shape on a many-CPU host (repo-laboratory skill).
+	_benchmark_variants=(baseline1 clients4 coop4 defer4 dispatch4 readers4)
 	for _round in $(seq 1 "${_fuse_io_uring_probe_benchmark_rounds}"); do
 		for _variant in "${_benchmark_variants[@]}"; do
 			case "${_variant}" in
 			clients4)
 				_variant_args=(--benchmark-clients 4)
+				;;
+			dispatch4)
+				_variant_args=(--benchmark-clients 4 --benchmark-classic-serve dispatch)
+				;;
+			readers4)
+				_variant_args=(--benchmark-clients 4 --benchmark-classic-readers 4)
 				;;
 			coop4)
 				_variant_args=(--benchmark-clients 4 --benchmark-setup coop)
@@ -363,6 +373,8 @@ __main() {
 				"$_enabled_probe_tmp" >/dev/null
 			jq -r --arg _variant "${_variant}" --arg _round "${_round}" '
 				"transport-benchmark variant=\($_variant) round=\($_round) requests=\(.benchmark.requests) clients=\(.benchmark.clients) entriesPerQueue=\(.benchmark.entriesPerQueue) setupFlags=\(.benchmark.setupFlags)"
+				+ " classic_serve=\(.benchmark.classic.serverShape) classic_readers=\(.benchmark.classic.serverReaders)"
+				+ " io_uring_serve=\(.benchmark.ioUring.serverShape)"
 				+ " classic_us=\(.benchmark.classic.durationUsPerRequest)"
 				+ " classic_syscalls_per_req=\(.benchmark.classic.syscallsPerRequest)"
 				+ (if (.benchmark.ioUring | has("error")) then
@@ -397,6 +409,8 @@ __main() {
 				| ($_classic[($_classic | length) / 2 | floor]) as $_classic_median
 				| ($_uring[($_uring | length) / 2 | floor]) as $_uring_median
 				| "transport-summary variant=\($_variant) rounds=\($_runs | length)"
+				+ " classic_serve=\($_runs[0].benchmark.classic.serverShape)"
+				+ " classic_readers=\($_runs[0].benchmark.classic.serverReaders)"
 				+ " classic_us_median=\($_classic_median * 100 | round / 100)"
 				+ " classic_us_min=\($_classic[0] * 100 | round / 100)"
 				+ " classic_us_max=\($_classic[-1] * 100 | round / 100)"
