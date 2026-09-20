@@ -102,6 +102,17 @@ __check_mounts() {
 	__assert_output "nested-mqueue" "nscell-dind-mqueue-ok" \
 		"$(docker run --rm --ipc=private "$_image" \
 			sh -c '[ "$(stat -f -c %T /dev/mqueue)" = mqueue ] && printf nscell-dind-mqueue-ok')"
+
+	# An inner container's own cgroup view: the nested runtime mounts one while it
+	# prepares the container's rootfs, and that is a mount in the inner world, not
+	# one NSCell already installed for this container. Skipping it left nested
+	# containers without a cgroup mount, which only surfaced through a runtime that
+	# looks for one in its own mountinfo -- the BuildKit executor behind
+	# `docker buildx --driver docker-container` fails with "no cgroup mount found
+	# in mountinfo".
+	__assert_output "nested-cgroup" "nscell-dind-cgroup-ok" \
+		"$(docker run --rm "$_image" \
+			sh -c 'grep -q " /sys/fs/cgroup .* - cgroup2 " /proc/self/mountinfo && printf nscell-dind-cgroup-ok')"
 }
 
 __check_build() {

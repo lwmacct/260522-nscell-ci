@@ -30,9 +30,9 @@ __check_cgroup() {
 
 __check_resources() {
 	_base="/tmp/nscell-ci-resource-negative-$$"
-	trap 'umount "$_base"/unsafe-* "$_base/cgroup-rw" "$_base/cgroup-root-bind" "$_base/overlay2/id/merged/dev/kmsg" "$_base/netns/not-net" 2>/dev/null || true; rm -rf "$_base"' EXIT
-	mkdir -p "$_base/cgroup-rw" "$_base/cgroup-root-bind" "$_base/overlay2/id/merged/dev" "$_base/netns"
-	: >"$_base/overlay2/id/merged/dev/kmsg"
+	trap 'umount "$_base"/unsafe-* "$_base/cgroup-rw" "$_base/cgroup-root-bind" "$_base/device-outside-dev" "$_base/netns/not-net" 2>/dev/null || true; rm -rf "$_base"' EXIT
+	mkdir -p "$_base/cgroup-rw" "$_base/cgroup-root-bind" "$_base/netns"
+	: >"$_base/device-outside-dev"
 	: >"$_base/netns/not-net"
 
 	for _fs in securityfs debugfs tracefs configfs; do
@@ -51,7 +51,12 @@ __check_resources() {
 		exit 1
 	fi
 
-	if mount --bind /dev/null "$_base/overlay2/id/merged/dev/kmsg" 2>"$_base/device.err"; then
+	# A device node is not a general bind source. The one shape the own-world rule
+	# keeps is an entry of this container's own /dev handed to an entry of a /dev
+	# directory of a container it creates, which is what a runtime does with a tty
+	# slave or a --device entry; a path elsewhere in this container's world is not
+	# that hand-off and stays refused.
+	if mount --bind /dev/null "$_base/device-outside-dev" 2>"$_base/device.err"; then
 		echo "invalid device bind unexpectedly succeeded" >&2
 		exit 1
 	fi
