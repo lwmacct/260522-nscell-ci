@@ -178,7 +178,7 @@ __main() {
   __assert_daemon_recorded_cross_container_deny
 
   __log "checking that a host process still reaches the container socket"
-  __expect_connect_ok host peer-host "${_shared_dir}/primary.sock"
+  __expect_connect_ok peer-host host "${_shared_dir}/primary.sock"
 
   __log "checking that a container still reaches a host-owned socket"
   timeout 60 python3 "${_shared_dir}/server.py" "${_shared_dir}/host.sock" >"${_shared_dir}/host-server.log" 2>&1 &
