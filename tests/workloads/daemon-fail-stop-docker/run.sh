@@ -66,9 +66,9 @@ __wait_for_container_stop() {
   return 1
 }
 
-# A container created with docker leaves its snapshot behind, so the daemon's
-# recovery can finish on its own; if a run still ends up degraded, the
-# documented operator path has to bring it back to accepting.
+# A container created with docker leaves its snapshot outside the daemon epoch.
+# The new epoch must reap it before accepting new work; there is no recovery
+# prune path and no session reconstruction.
 __assert_daemon_accepting() {
   local _deadline=$((SECONDS + 30))
   local _admission=""
@@ -77,9 +77,6 @@ __assert_daemon_accepting() {
     _admission="$(sudo nscell daemon status 2>/dev/null | jq -r '.admission // empty' || true)"
     if [[ "$_admission" == "Accepting" ]]; then
       return 0
-    fi
-    if [[ "$_admission" == "Degraded" ]]; then
-      sudo nscell daemon state prune >/dev/null 2>&1 || true
     fi
     sleep 0.5
   done

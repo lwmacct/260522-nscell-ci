@@ -38,10 +38,9 @@ workloads remain isolated. Selecting explicit `targets` instead runs one target
 per VM, because no group token stands for that entry; `experiment` targets are
 only reachable that way.
 
-Runtime host setup starts from a clean daemon state by default. Storage crash
-recovery tests decode the checksummed `/var/lib/nscell/state/events.log`
-snapshots directly, so they validate the daemon's actual recovery state instead
-of relying on legacy per-domain JSON files.
+Runtime host setup starts from a clean daemon state by default. The explicit-storage
+workload verifies that host binds survive stop/start and daemon restart while the
+old epoch's runtime state, capability, process, and FUSE mount are gone.
 
 The expensive Ubuntu 26.04 systemd environment is published separately as
 `ghcr.io/lwmacct/260522-nscell-ci:systemd-pid1-latest`. Only the

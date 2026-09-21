@@ -77,7 +77,7 @@ __mapped_root() {
 }
 
 __main() {
-  local _pid _docker_pid _start_a _start_b
+  local _pid _daemon_pid _docker_pid _start_a _start_b
   if [[ "${1:-}" == cleanup ]]; then __cleanup; return; fi
   __require_cmd docker
   __require_cmd jq
@@ -121,12 +121,38 @@ __main() {
   __assert_marker "$_container_id_a" epoch-two
   sudo nscell --root "$_oci_runtime_root" delete --force "$_container_id_a"
 
-  __log "recreating explicit storage after an inactive daemon restart"
-  _docker_pid="$(systemctl show --property MainPID --value docker.service)"
-  sudo systemctl restart nscell-daemon.service
-  __assert_nscell_ready
-  [[ "$(systemctl show --property MainPID --value docker.service)" == "$_docker_pid" ]]
+  __log "recreating explicit storage after an active fail-stop daemon restart"
   __create_and_start "$_container_id_a" "$_bundle_a"
+  _pid="$(sudo cat "${_bundle_a}/init.pid")"
+  _daemon_pid="$(systemctl show --property MainPID --value nscell-daemon.service)"
+  _docker_pid="$(systemctl show --property MainPID --value docker.service)"
+  [[ "$_daemon_pid" =~ ^[1-9][0-9]*$ && "$_docker_pid" =~ ^[1-9][0-9]*$ ]]
+  __container_capability_exists "$_container_id_a"
+  sudo findmnt -rn -T "/var/lib/nscellfs/${_container_id_a}" -o FSTYPE |
+    grep -Eq '^fuse(\.nscellfs)?$'
+  sudo systemctl kill --kill-whom=main --signal=SIGKILL nscell-daemon.service
+  __wait_for_exit "$_daemon_pid"
+  __wait_for_exit "$_pid"
+  sudo systemctl reset-failed nscell-daemon.service
+  sudo systemctl start nscell-daemon.service
+  __assert_nscell_ready
+  [[ "$(systemctl show --property MainPID --value docker.service)" == "$_docker_pid" ]] || {
+    echo "Docker MainPID changed across the NSCell daemon restart" >&2
+    return 1
+  }
+  sudo test ! -e "${_oci_runtime_root}/${_container_id_a}"
+  if __container_capability_exists "$_container_id_a"; then
+    echo "container capability survived daemon restart" >&2
+    return 1
+  fi
+  if sudo findmnt -rn -t fuse,fuse.nscellfs | grep -F "/${_container_id_a}"; then
+    echo "VirtFS mount survived daemon restart" >&2
+    return 1
+  fi
+  sudo nscell daemon gate status | jq -e '.registeredContainers == 0' >/dev/null
+  __create_and_start "$_container_id_a" "$_bundle_a"
+  _pid="$(sudo cat "${_bundle_a}/init.pid")"
+  [[ "$(__mapped_root "$_pid")" == "$_start_a" ]]
   __assert_marker "$_container_id_a" epoch-two
   [[ "$(sudo sha256sum "${_storage_root}/epoch-marker" | awk '{print $1}')" == "$(printf epoch-two | sha256sum | awk '{print $1}')" ]]
   sudo nscell --root "$_oci_runtime_root" delete --force "$_container_id_a"

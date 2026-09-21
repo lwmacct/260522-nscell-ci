@@ -3,10 +3,10 @@
   "targets": [
     {"name":"smoke","kind":"probe","modes":{"vm":{"class":"preflight","timeout_minutes":5}}},
     {"name":"container-security-policy","kind":"workload","modes":{"vm":{"class":"policy","timeout_minutes":7}}},
-    {"name":"daemon-crash-recovery","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5}}},
     {"name":"daemon-dial-retry","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5}}},
     {"name":"daemon-fail-stop","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5}}},
     {"name":"daemon-fail-stop-docker","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":6}}},
+    {"name":"drain-and-switch","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5}}},
     {"name":"docker-in-docker","kind":"workload","modes":{"vm":{"class":"runtime","timeout_minutes":10}}},
     {"name":"kubernetes-k3s","kind":"workload","modes":{"vm":{"class":"runtime","timeout_minutes":10}}},
     {"name":"oci-lifecycle","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5,"group":"light"}}},
@@ -24,10 +24,7 @@
     {"name":"procfs-memory","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5,"group":"light"}}},
     {"name":"resource-update","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":9}}},
     {"name":"shared-netns-lifecycle","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5,"group":"light"}}},
-    {"name":"rootfs-event-recovery","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5}}},
     {"name":"seccomp-notify-concurrency","kind":"workload","modes":{"vm":{"class":"policy","timeout_minutes":5,"group":"light"}}},
-    {"name":"storage-crash-boundaries","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":8}}},
-    {"name":"storage-lifecycle","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5,"group":"light"}}},
     {"name":"explicit-storage-persistence","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":7}}},
     {"name":"systemd-pid1","kind":"workload","modes":{"vm":{"class":"runtime","timeout_minutes":8}}}
   ]

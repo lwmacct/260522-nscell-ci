@@ -98,6 +98,7 @@ __main() {
   __log "restarting daemon and validating a fresh container"
   sudo systemctl start nscell-daemon.service
   __assert_nscell_ready
+  sudo nscell daemon gate status | jq -e '.registeredContainers == 0' >/dev/null
   __prepare_oci_bundle \
     "$_oci_base_image" \
     "$_bundle" \

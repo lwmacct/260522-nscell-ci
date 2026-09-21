@@ -36,10 +36,10 @@ __collect_guest_logs() {
   __pull_guest_file /var/log/nscell-runtime-invocations.log \
     "${_log_dir}/nscell-runtime-invocations.log"
   __pull_guest_file /var/log/nscell-runtime.log "${_log_dir}/nscell-runtime.log"
-  __pull_guest_file /var/lib/nscell/state/events.log "${_log_dir}/nscell-state-events.log"
-  if [[ -f "${_log_dir}/nscell-state-events.log" ]]; then
-    sudo chown "$(id -u):$(id -g)" "${_log_dir}/nscell-state-events.log"
-    chmod 0644 "${_log_dir}/nscell-state-events.log"
+  __pull_guest_file /var/lib/nscell/identity.json "${_log_dir}/nscell-identity.json"
+  if [[ -f "${_log_dir}/nscell-identity.json" ]]; then
+    sudo chown "$(id -u):$(id -g)" "${_log_dir}/nscell-identity.json"
+    chmod 0644 "${_log_dir}/nscell-identity.json"
   fi
 
   # shellcheck disable=SC2016,SC2024 # The quoted script expands inside the guest.
