@@ -113,6 +113,13 @@ __check_mounts() {
 	__assert_output "nested-cgroup" "nscell-dind-cgroup-ok" \
 		"$(docker run --rm "$_image" \
 			sh -c 'grep -q " /sys/fs/cgroup .* - cgroup2 " /proc/self/mountinfo && printf nscell-dind-cgroup-ok')"
+
+	# Host networking makes the inner daemon create its default sandbox by
+	# binding the calling thread's network namespace from
+	# /proc/self/task/<tid>/ns/net. The source must remain that namespace object,
+	# not become a general-purpose /proc bind grant.
+	docker run --rm --network host "$_image" true
+	echo "dind-ok host-network"
 }
 
 __check_build() {
