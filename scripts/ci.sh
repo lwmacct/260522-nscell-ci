@@ -437,7 +437,14 @@ __run_workload() {
   export NSCELL_CI_LOG_ROOT="${_test_root}/runs/${_resource_id}/logs"
   export NSCELL_WORKLOAD_RUN_ID="$_resource_id"
 
-  bash "${_runtime_test_dir}/run.sh" run "$_workload"
+  local _status=0
+  bash "${_runtime_test_dir}/run.sh" run "$_workload" || _status=$?
+  # Workloads clean up through their `cleanup` subcommand; the parallel path
+  # calls it, an isolated run has to do the same, otherwise the VM runner's
+  # leftover check fails the target on containers the workload intentionally
+  # leaves for diagnostics.
+  bash "${_runtime_test_dir}/run.sh" cleanup "$_workload" || true
+  return "$_status"
 }
 
 __collect_logs() {
