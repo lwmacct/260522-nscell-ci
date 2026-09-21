@@ -132,10 +132,10 @@ __main() {
     grep -Eq '^fuse(\.nscellfs)?$'
   sudo systemctl kill --kill-whom=main --signal=SIGKILL nscell-daemon.service
   __wait_for_exit "$_daemon_pid"
-  __wait_for_exit "$_pid"
   sudo systemctl reset-failed nscell-daemon.service
   sudo systemctl start nscell-daemon.service
   __assert_nscell_ready
+  __wait_for_exit "$_pid"
   [[ "$(systemctl show --property MainPID --value docker.service)" == "$_docker_pid" ]] || {
     echo "Docker MainPID changed across the NSCell daemon restart" >&2
     return 1
