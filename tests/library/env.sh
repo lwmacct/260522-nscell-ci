@@ -63,6 +63,11 @@ _container_security_policy_name="${NSCELL_CI_CONTAINER_SECURITY_POLICY_NAME:-nsc
 _container_security_policy_base_image="${NSCELL_CI_CONTAINER_SECURITY_POLICY_BASE_IMAGE:-${_python_alpine_image}}"
 _container_security_policy_image="${NSCELL_CI_CONTAINER_SECURITY_POLICY_IMAGE:-$(__image_tag nscell-ci/container-security-policy latest)}"
 
+_unix_socket_peer_primary_name="${NSCELL_CI_UNIX_SOCKET_PEER_PRIMARY_NAME:-nscell-unix-socket-peer-primary${_workload_resource_id:+-${_workload_resource_id}}}"
+_unix_socket_peer_secondary_name="${NSCELL_CI_UNIX_SOCKET_PEER_SECONDARY_NAME:-nscell-unix-socket-peer-secondary${_workload_resource_id:+-${_workload_resource_id}}}"
+_unix_socket_peer_base_image="${NSCELL_CI_UNIX_SOCKET_PEER_BASE_IMAGE:-${_python_alpine_image}}"
+_unix_socket_peer_shared_dir="${NSCELL_CI_UNIX_SOCKET_PEER_SHARED_DIR:-${_workload_run_root}/unix-socket-peer}"
+
 _kubernetes_k3s_name="${NSCELL_CI_KUBERNETES_K3S_NAME:-nscell-kubernetes-k3s${_workload_resource_id:+-${_workload_resource_id}}}"
 _kubernetes_k3s_base_image="${NSCELL_CI_KUBERNETES_K3S_BASE_IMAGE:-docker.io/rancher/k3s:v1.30.6-k3s1}"
 _kubernetes_k3s_image="${NSCELL_CI_KUBERNETES_K3S_IMAGE:-$(__image_tag nscell-ci/kubernetes-k3s latest)}"

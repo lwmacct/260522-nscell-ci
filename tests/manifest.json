@@ -19,6 +19,7 @@
     {"name":"kernel-capability-smoke","kind":"workload","modes":{"vm":{"class":"contract","timeout_minutes":5,"group":"light"}}},
     {"name":"new-mount-api-deny","kind":"workload","modes":{"vm":{"class":"policy","timeout_minutes":6}}},
     {"name":"io-uring-policy","kind":"workload","modes":{"vm":{"class":"policy","timeout_minutes":6}}},
+    {"name":"unix-socket-peer","kind":"workload","modes":{"vm":{"class":"policy","timeout_minutes":6}}},
     {"name":"procfs-cpu","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5}}},
     {"name":"resource-limits","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":6,"group":"light"}}},
     {"name":"procfs-memory","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5,"group":"light"}}},
