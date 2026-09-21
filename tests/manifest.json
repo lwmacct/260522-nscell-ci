@@ -28,6 +28,7 @@
     {"name":"seccomp-notify-concurrency","kind":"workload","modes":{"vm":{"class":"policy","timeout_minutes":5,"group":"light"}}},
     {"name":"storage-crash-boundaries","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":8}}},
     {"name":"storage-lifecycle","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5,"group":"light"}}},
+    {"name":"explicit-storage-persistence","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":7}}},
     {"name":"systemd-pid1","kind":"workload","modes":{"vm":{"class":"runtime","timeout_minutes":8}}}
   ]
 }
