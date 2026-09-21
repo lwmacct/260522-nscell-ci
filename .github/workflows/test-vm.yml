@@ -28,6 +28,11 @@ on:
         required: false
         default: ""
         type: string
+      daemon_flags:
+        description: Extra flags appended to the nscell-daemon ExecStart in the guest (test-only)
+        required: false
+        default: ""
+        type: string
   workflow_dispatch:
     inputs:
       image_name:
@@ -59,13 +64,18 @@ on:
         required: false
         default: ""
         type: string
+      daemon_flags:
+        description: Extra flags appended to the nscell-daemon ExecStart in the guest (test-only)
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
   packages: read
 
 concurrency:
-  group: test-vm-${{ github.ref }}-${{ inputs.image_name }}-${{ inputs.nscell_image }}-${{ inputs.suite }}-${{ inputs.targets || 'manifest' }}
+  group: test-vm-${{ github.ref }}-${{ inputs.image_name }}-${{ inputs.nscell_image }}-${{ inputs.suite }}-${{ inputs.targets || 'manifest' }}-${{ inputs.daemon_flags }}
   cancel-in-progress: true
 
 defaults:
@@ -232,6 +242,7 @@ jobs:
           test_target: ${{ matrix.name }}
           test_targets_json: ${{ toJSON(matrix.targets) }}
           nscell_image: ${{ needs.prepare.outputs.nscell_image_ref }}
+          daemon_flags: ${{ inputs.daemon_flags }}
 
       - name: Cleanup isolated VM
         if: always()

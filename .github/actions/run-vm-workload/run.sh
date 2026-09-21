@@ -7,6 +7,7 @@ _test_target="${TEST_TARGET:?TEST_TARGET is required}"
 _test_targets_json="${TEST_TARGETS_JSON:?TEST_TARGETS_JSON is required}"
 _nscell_image="${NSCELL_IMAGE:?NSCELL_IMAGE is required}"
 _oci_base_image="${NSCELL_CI_OCI_BASE_IMAGE:-docker.io/library/python:3.14.4-alpine3.23}"
+_daemon_flags="${NSCELL_CI_DAEMON_FLAGS:-}"
 declare -a _test_targets=()
 
 __main() {
@@ -23,6 +24,7 @@ sudo incus exec "${_vm_name}" -- \
   NSCELL_TEST_TARGETS_JSON="${_test_targets_json}" \
   NSCELL_IMAGE="${_nscell_image}" \
     NSCELL_CI_OCI_BASE_IMAGE="${_oci_base_image}" \
+    NSCELL_CI_DAEMON_FLAGS="${_daemon_flags}" \
     bash -s <<'EOF'
 set -euo pipefail
 
@@ -30,6 +32,7 @@ _test_target="${NSCELL_TEST_TARGET}"
 _test_targets_json="${NSCELL_TEST_TARGETS_JSON}"
 _nscell_image="${NSCELL_IMAGE}"
 _oci_base_image="${NSCELL_CI_OCI_BASE_IMAGE}"
+_daemon_flags="${NSCELL_CI_DAEMON_FLAGS:-}"
 declare -a _test_targets=()
 mapfile -t _test_targets < <(jq -r '.[]' <<<"${_test_targets_json}")
 
@@ -44,6 +47,9 @@ export NSCELL_IMAGE_PLATFORM=linux/amd64
 export NSCELL_CI_TEST_ROOT=/data/nscell
 export NSCELL_CI_IMAGE_CACHE_DIR=/data/nscell/images
 export NSCELL_CI_OCI_BASE_IMAGE="${_oci_base_image}"
+if [[ -n "${_daemon_flags}" ]]; then
+  export NSCELL_CI_DAEMON_FLAGS="${_daemon_flags}"
+fi
 bash scripts/ci.sh setup-runtime-host
 bash scripts/ci.sh verify-gate
 
@@ -60,6 +66,14 @@ smoke)
   else
     export NSCELL_WORKLOAD_FAIL_FAST=0
     bash tests/run.sh parallel "${_test_targets[@]}"
+  fi
+  # 工作负载的清理普遍写成 `docker rm -f … || true`, 失败会被吞掉, 残留容器既污染同一 VM 上
+  # 后面的 target, 又会让下一次部署的 drain 卡满预算. 残留必须让 target 失败, 而不是留给别人.
+  _leftover="$(docker ps --format '{{.Names}} {{.Status}}')"
+  if [[ -n "${_leftover}" ]]; then
+    printf 'target left running containers behind:\n%s\n' "${_leftover}" >&2
+    bash scripts/ci.sh collect-logs || true
+    exit 1
   fi
   bash scripts/ci.sh collect-logs || true
   ;;

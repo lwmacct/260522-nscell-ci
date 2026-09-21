@@ -14,6 +14,10 @@ inputs:
   nscell_image:
     description: Public NSCell image digest; the caller resolves tags before dispatch
     required: true
+  daemon_flags:
+    description: Extra flags appended to the nscell-daemon ExecStart in the guest (test-only)
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -25,4 +29,5 @@ runs:
         TEST_TARGET: ${{ inputs.test_target }}
         TEST_TARGETS_JSON: ${{ inputs.test_targets_json }}
         NSCELL_IMAGE: ${{ inputs.nscell_image }}
+        NSCELL_CI_DAEMON_FLAGS: ${{ inputs.daemon_flags }}
       run: bash "${{ github.action_path }}/run.sh"

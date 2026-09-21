@@ -250,7 +250,12 @@ EOF
 }
 
 __install_nscell_systemd_units() {
+  local _daemon_extra_flags="${NSCELL_CI_DAEMON_FLAGS:-}"
+
   __log "installing nscell-daemon systemd unit"
+  if [[ -n "$_daemon_extra_flags" ]]; then
+    __log "nscell-daemon extra flags: ${_daemon_extra_flags}"
+  fi
   sudo tee /etc/systemd/system/nscell-daemon.service >/dev/null <<EOF
 [Unit]
 Description=nscell-daemon (NSCell control and data plane)
@@ -258,7 +263,7 @@ Before=docker.service containerd.service
 
 [Service]
 Type=notify
-ExecStart=/usr/bin/nscell daemon --log ${_daemon_log} --metrics-listen 127.0.0.1:9618
+ExecStart=/usr/bin/nscell daemon --log ${_daemon_log} --metrics-listen 127.0.0.1:9618 ${_daemon_extra_flags}
 TimeoutStartSec=45
 TimeoutStopSec=90
 StartLimitInterval=0
