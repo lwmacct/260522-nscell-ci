@@ -431,11 +431,42 @@ __assert_xattr_negative_audits() {
   __assert_bpf_xattr_audit "$_log_start" removexattr deny user.nscell_ci_denied
 }
 
-__assert_xattr_trusted_overlay_audits() {
-  local _log_start="$1"
+# The trusted-overlay xattr allow path is counted in BPF instead of streamed:
+# one image build produces thousands of them, so they no longer become log lines.
+__allow_counter() {
+  local _operation="$1"
 
-  __assert_bpf_xattr_audit "$_log_start" setxattr allow trusted.overlay.origin
-  __assert_bpf_xattr_audit "$_log_start" getxattr allow trusted.overlay.origin
+  nscell daemon gate status 2>/dev/null |
+    jq -r --arg operation "$_operation" \
+      '[.allowCounters[]? | select(.operation == $operation and .decision == "allow") | .count] | add // 0'
+}
+
+__assert_allow_counter_incremented() {
+  local _operation="$1"
+  local _before="$2"
+  local _deadline=$((SECONDS + 15))
+  local _now=""
+
+  while ((SECONDS <= _deadline)); do
+    _now="$(__allow_counter "$_operation" || printf '0')"
+    if [[ "${_now:-0}" -gt "${_before:-0}" ]]; then
+      echo "allow-counter-ok operation=${_operation} before=${_before} after=${_now}"
+      return 0
+    fi
+    sleep 0.5
+  done
+
+  echo "allow counter for ${_operation} did not increase (before=${_before}, now=${_now:-0})" >&2
+  nscell daemon gate status >&2 || true
+  return 1
+}
+
+__assert_xattr_trusted_overlay_audits() {
+  local _setxattr_before="$1"
+  local _getxattr_before="$2"
+
+  __assert_allow_counter_incremented setxattr "$_setxattr_before"
+  __assert_allow_counter_incremented getxattr "$_getxattr_before"
 }
 
 __assert_no_bpf_host_audit() {
@@ -639,7 +670,7 @@ __check_proc_sys() {
 
 __run_system_container() {
   local _name="${_container_security_policy_name}-system"
-  local _log_start _probe_output
+  local _log_start _probe_output _setxattr_before _getxattr_before
 
   docker rm -f "$_name" >/dev/null 2>&1 || true
   docker run -d \
@@ -681,8 +712,10 @@ __run_system_container() {
   __assert_xattr_negative_audits "$_log_start"
   __log "checking trusted overlay xattr policy in ${_name}"
   _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
+  _setxattr_before="$(__allow_counter setxattr || printf '0')"
+  _getxattr_before="$(__allow_counter getxattr || printf '0')"
   __run_probe "$_name" xattr-trusted-overlay-policy
-  __assert_xattr_trusted_overlay_audits "$_log_start"
+  __assert_xattr_trusted_overlay_audits "$_setxattr_before" "$_getxattr_before"
   __check_proc_sys "$_name"
 }
 
