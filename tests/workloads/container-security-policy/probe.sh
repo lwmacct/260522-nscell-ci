@@ -309,6 +309,18 @@ raise RuntimeError("conntrack hashsize write open unexpectedly succeeded")
 PY
 }
 
+__check_module_autoload_deny() {
+	python3 - <<'PY'
+import socket
+
+for family in (5, 30):
+    try:
+        socket.socket(family, socket.SOCK_DGRAM).close()
+    except OSError:
+        pass
+PY
+}
+
 __check_control_plane_isolation() {
 	for _path in /run/nscell/daemon.sock /run/nscell/containers; do
 		if [ -e "$_path" ] || [ -L "$_path" ]; then
@@ -410,6 +422,9 @@ __main() {
 		sys-module-policy)
 			__check_sys_module
 			;;
+		module-autoload-deny)
+			__check_module_autoload_deny
+			;;
 		control-plane-isolation)
 			__check_control_plane_isolation
 			;;
@@ -417,7 +432,7 @@ __main() {
 			__check_process_identity_isolation
 			;;
 		*)
-			echo "usage: $0 {cgroup-delegation|privileged-resource-negative-policy|cgroup-subtree-mount-policy|kernel-interface-file-policy|cgroup-subtree-kernel-interface-file-policy|xattr-negative-policy|xattr-trusted-overlay-policy|proc-sys-policy|sys-module-policy|control-plane-isolation|process-identity-isolation}" >&2
+			echo "usage: $0 {cgroup-delegation|privileged-resource-negative-policy|cgroup-subtree-mount-policy|kernel-interface-file-policy|cgroup-subtree-kernel-interface-file-policy|xattr-negative-policy|xattr-trusted-overlay-policy|proc-sys-policy|sys-module-policy|module-autoload-deny|control-plane-isolation|process-identity-isolation}" >&2
 			exit 2
 			;;
 	esac

@@ -277,6 +277,35 @@ __assert_no_bpf_task_audit() {
   fi
 }
 
+__assert_bpf_module_audit() {
+  local _log_start="$1"
+  local _decision="$2"
+  local _name="$3"
+  local _deadline _log
+
+  _deadline=$((SECONDS + 15))
+  while ((SECONDS <= _deadline)); do
+    _log="$(tail -n +"$((_log_start + 1))" "$_daemon_log" 2>/dev/null || true)"
+    if awk \
+      -v _decision="decision=${_decision}" \
+      -v _name="name=${_name}" \
+      'index($0, "BPF LSM gate audit event") &&
+			 index($0, "operation=module_request") &&
+			 index($0, _decision) &&
+			 index($0, _name) { found = 1 }
+			 END { exit !found }' <<<"$_log"; then
+      return 0
+    fi
+    sleep 0.5
+  done
+
+  echo "missing BPF LSM module audit for decision=${_decision} name=${_name}" >&2
+  tail -n +"$((_log_start + 1))" "$_daemon_log" 2>/dev/null |
+    grep -E 'BPF LSM gate audit event|operation=module_request' |
+    tail -160 >&2 || true
+  exit 1
+}
+
 __container_cgroup_path() {
   local _name="$1"
   local _pid _rel _candidate _match
@@ -576,6 +605,59 @@ __check_host_task_gate_exemption() {
   __cleanup
 }
 
+__unload_xt_comment() {
+  if lsmod | grep -q '^xt_comment '; then
+    sudo modprobe -r xt_comment
+  fi
+  if lsmod | grep -q '^xt_comment '; then
+    echo "cannot isolate xt_comment module state for module autoload policy" >&2
+    exit 1
+  fi
+}
+
+__check_module_autoload_policy() (
+  local _name="${_container_security_policy_name}-module"
+  local _log_start
+
+  __cleanup() {
+    docker rm -f "$_name" >/dev/null 2>&1 || true
+    sudo modprobe -r xt_comment >/dev/null 2>&1 || true
+  }
+  trap __cleanup EXIT
+
+  __log "checking module autoload deny policy"
+  _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
+  timeout 120 docker run --rm --runtime nscell "$_container_security_policy_image" \
+    nscell-ci-container-security-policy-probe module-autoload-deny
+  __assert_bpf_module_audit "$_log_start" deny net-pf-5
+  __assert_bpf_module_audit "$_log_start" deny net-pf-30
+  if lsmod | grep -Eq '^(appletalk|psnap|tipc) '; then
+    echo "denied module autoload unexpectedly loaded a host module" >&2
+    lsmod | grep -E '^(appletalk|psnap|tipc) ' >&2
+    exit 1
+  fi
+
+  __unload_xt_comment
+  __log "checking ipt_comment module autoload allowlist"
+  _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
+  timeout 120 docker run --rm --runtime nscell "$_container_security_policy_image" \
+    iptables -w 5 -A OUTPUT -m comment --comment nscell-ci -j ACCEPT
+  __assert_bpf_module_audit "$_log_start" allow ipt_comment
+  lsmod | grep -q '^xt_comment '
+  __unload_xt_comment
+
+  __log "checking ip6t_comment module autoload allowlist"
+  _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
+  timeout 120 docker run --rm --runtime nscell "$_container_security_policy_image" \
+    ip6tables -w 5 -A OUTPUT -m comment --comment nscell-ci -j ACCEPT
+  __assert_bpf_module_audit "$_log_start" allow ip6t_comment
+  lsmod | grep -q '^xt_comment '
+
+  __cleanup
+  trap - EXIT
+  echo "module-autoload-policy-ok"
+)
+
 __check_host_target_task_gate() (
   local _name="${_container_security_policy_name}-host-target"
   local _source_cgroup _log_start
@@ -857,6 +939,7 @@ __main() {
   __check_host_bpf_gate_exemption
   __check_host_kernel_interface_gate_exemption
   __check_host_task_gate_exemption
+  __check_module_autoload_policy
   __run_system_container
   __check_host_target_task_gate
   __check_cross_container_task_gate
