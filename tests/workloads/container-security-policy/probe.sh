@@ -321,6 +321,23 @@ for family in (5, 30):
 PY
 }
 
+__check_audit_log_flood() {
+	python3 - <<'PY'
+import ctypes
+import os
+
+os.makedirs("/tmp/m", exist_ok=True)
+libc = ctypes.CDLL(None, use_errno=True)
+denied = 0
+for _ in range(1000):
+    result = libc.mount(b"none", b"/tmp/m", b"ext4", 0, None)
+    if result != 0:
+        denied += 1
+if denied != 1000:
+    raise SystemExit(f"denied mount count = {denied}, want 1000")
+PY
+}
+
 __check_control_plane_isolation() {
 	for _path in /run/nscell/daemon.sock /run/nscell/containers; do
 		if [ -e "$_path" ] || [ -L "$_path" ]; then
@@ -425,6 +442,9 @@ __main() {
 		module-autoload-deny)
 			__check_module_autoload_deny
 			;;
+		audit-log-flood)
+			__check_audit_log_flood
+			;;
 		control-plane-isolation)
 			__check_control_plane_isolation
 			;;
@@ -432,7 +452,7 @@ __main() {
 			__check_process_identity_isolation
 			;;
 		*)
-			echo "usage: $0 {cgroup-delegation|privileged-resource-negative-policy|cgroup-subtree-mount-policy|kernel-interface-file-policy|cgroup-subtree-kernel-interface-file-policy|xattr-negative-policy|xattr-trusted-overlay-policy|proc-sys-policy|sys-module-policy|module-autoload-deny|control-plane-isolation|process-identity-isolation}" >&2
+			echo "usage: $0 {cgroup-delegation|privileged-resource-negative-policy|cgroup-subtree-mount-policy|kernel-interface-file-policy|cgroup-subtree-kernel-interface-file-policy|xattr-negative-policy|xattr-trusted-overlay-policy|proc-sys-policy|sys-module-policy|module-autoload-deny|audit-log-flood|control-plane-isolation|process-identity-isolation}" >&2
 			exit 2
 			;;
 	esac

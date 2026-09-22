@@ -658,6 +658,63 @@ __check_module_autoload_policy() (
   echo "module-autoload-policy-ok"
 )
 
+__audit_mount_deny_counter() {
+  curl -s http://127.0.0.1:9618/metrics |
+    awk '/^nscell_bpf_gate_audit_events_total\{/ &&
+      index($0, "operation=\"mount\"") &&
+      index($0, "decision=\"deny\"") &&
+      index($0, "reason=\"policy\"") { print $NF }'
+}
+
+__check_audit_log_sampling() {
+  local _log_start _line_growth _deadline _log _before _after _recent_count
+
+  __log "checking bounded audit log sampling"
+  if [[ ! -f /etc/logrotate.d/nscell-daemon ]]; then
+    echo "daemon logrotate configuration is missing" >&2
+    exit 1
+  fi
+  _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
+  _before="$(__audit_mount_deny_counter)"
+  [[ "${_before}" =~ ^[0-9]+$ ]] || _before=0
+  timeout 120 docker run --rm --runtime nscell "$_container_security_policy_image" \
+    nscell-ci-container-security-policy-probe audit-log-flood
+
+  _deadline=$((SECONDS + 15))
+  while ((SECONDS <= _deadline)); do
+    _log="$(tail -n +"$((_log_start + 1))" "$_daemon_log" 2>/dev/null || true)"
+    if grep -q 'audit_sampled=true' <<<"$_log" &&
+      grep -q 'BPF LSM gate audit events suppressed' <<<"$_log" &&
+      grep -q 'events=1000' <<<"$_log"; then
+      break
+    fi
+    sleep 0.5
+  done
+  if ((SECONDS > _deadline)); then
+    echo "audit log sampling did not retain samples and a summary" >&2
+    grep -E 'BPF LSM gate audit|audit_sampled|suppressed' <<<"$_log" >&2 || true
+    exit 1
+  fi
+
+  _after="$(__audit_mount_deny_counter)"
+  [[ "${_after}" =~ ^[0-9]+$ ]] || _after=0
+  if ((_after - _before != 1000)); then
+    echo "audit counter delta = $((_after - _before)), want 1000" >&2
+    exit 1
+  fi
+  _recent_count="$(nscell daemon gate status | jq '.recentAuditEvents | length')"
+  if [[ "${_recent_count}" != 32 ]]; then
+    echo "recent audit event count = ${_recent_count}, want 32" >&2
+    exit 1
+  fi
+  _line_growth=$(($(wc -l <"$_daemon_log") - _log_start))
+  if ((_line_growth > 120)); then
+    echo "audit flood log line growth = ${_line_growth}, want <= 120" >&2
+    exit 1
+  fi
+  echo "audit-log-sampling-ok lines=${_line_growth} counter_delta=$((_after - _before))"
+}
+
 __check_host_target_task_gate() (
   local _name="${_container_security_policy_name}-host-target"
   local _source_cgroup _log_start
@@ -940,6 +997,7 @@ __main() {
   __check_host_kernel_interface_gate_exemption
   __check_host_task_gate_exemption
   __check_module_autoload_policy
+  __check_audit_log_sampling
   __run_system_container
   __check_host_target_task_gate
   __check_cross_container_task_gate
