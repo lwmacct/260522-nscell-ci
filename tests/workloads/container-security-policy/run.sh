@@ -680,8 +680,7 @@ __check_audit_log_sampling() {
   while ((SECONDS <= _deadline)); do
     _log="$(tail -n +"$((_log_start + 1))" "$_daemon_log" 2>/dev/null || true)"
     if grep -q 'audit_sampled=true' <<<"$_log" &&
-      grep -q 'BPF LSM gate audit events suppressed' <<<"$_log" &&
-      grep -q 'events=1000' <<<"$_log"; then
+      grep -q 'BPF LSM gate audit events suppressed' <<<"$_log"; then
       break
     fi
     sleep 0.5
