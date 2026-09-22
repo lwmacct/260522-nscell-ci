@@ -281,6 +281,34 @@ __check_proc_sys() {
 	echo "proc-sys-security-ok"
 }
 
+__check_sys_module() {
+	python3 - <<'PY'
+import errno
+import os
+import stat
+
+path = "/sys/module/nf_conntrack/parameters/hashsize"
+try:
+    info = os.stat(path)
+except OSError as exc:
+    raise RuntimeError(f"conntrack hashsize view is unavailable: {exc}") from exc
+
+mode = stat.S_IMODE(info.st_mode)
+if mode != 0o444:
+    raise RuntimeError(f"conntrack hashsize mode is {mode:#o}, want 0o444")
+if not open(path, "rb").read().strip():
+    raise RuntimeError("conntrack hashsize did not expose a readable value")
+try:
+    open(path, "r+b")
+except OSError as exc:
+    if exc.errno == errno.EPERM:
+        print("sys-module-security-ok")
+        raise SystemExit(0)
+    raise
+raise RuntimeError("conntrack hashsize write open unexpectedly succeeded")
+PY
+}
+
 __check_control_plane_isolation() {
 	for _path in /run/nscell/daemon.sock /run/nscell/containers; do
 		if [ -e "$_path" ] || [ -L "$_path" ]; then
@@ -379,6 +407,9 @@ __main() {
 		proc-sys-policy)
 			__check_proc_sys
 			;;
+		sys-module-policy)
+			__check_sys_module
+			;;
 		control-plane-isolation)
 			__check_control_plane_isolation
 			;;
@@ -386,7 +417,7 @@ __main() {
 			__check_process_identity_isolation
 			;;
 		*)
-			echo "usage: $0 {cgroup-delegation|privileged-resource-negative-policy|cgroup-subtree-mount-policy|kernel-interface-file-policy|cgroup-subtree-kernel-interface-file-policy|xattr-negative-policy|xattr-trusted-overlay-policy|proc-sys-policy|control-plane-isolation|process-identity-isolation}" >&2
+			echo "usage: $0 {cgroup-delegation|privileged-resource-negative-policy|cgroup-subtree-mount-policy|kernel-interface-file-policy|cgroup-subtree-kernel-interface-file-policy|xattr-negative-policy|xattr-trusted-overlay-policy|proc-sys-policy|sys-module-policy|control-plane-isolation|process-identity-isolation}" >&2
 			exit 2
 			;;
 	esac

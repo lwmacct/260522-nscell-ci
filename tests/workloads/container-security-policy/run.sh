@@ -717,6 +717,8 @@ __run_system_container() {
   __run_probe "$_name" xattr-trusted-overlay-policy
   __assert_xattr_trusted_overlay_audits "$_setxattr_before" "$_getxattr_before"
   __check_proc_sys "$_name"
+  __log "checking sys module security policy for ${_name}"
+  __run_probe "$_name" sys-module-policy
 }
 
 __check_kernel_view_bind_admission() {
