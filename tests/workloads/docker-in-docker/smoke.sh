@@ -31,6 +31,16 @@ __assert_refused() {
 	echo "dind-refused ${_label}"
 }
 
+# This container is the one NSCell created, so its devpts superblock has to be
+# owned by its own user namespace: /dev/pts and /dev/pts/ptmx belong to the
+# container's root (0:0). Before devpts moved into the container's user
+# namespace both showed up as 65534:65534, gid=5 in the superblock was the
+# host's gid 5, and every pty allocation failed when sshd or a nested runtime
+# tried chown(slave, 0, 5) on a slave whose raw gid had no mapping in the
+# container's id map.
+__assert_output "own-devpts-owner" "0:0 0:0" \
+	"$(stat -c '%u:%g' /dev/pts /dev/pts/ptmx | tr '\n' ' ' | sed 's/ $//')"
+
 # __privileged_probe succeeds only inside a privileged inner container: it keeps
 # CAP_SYS_ADMIN (bit 21) and gets the /dev entry Docker adds to its rootfs.
 #
@@ -98,7 +108,10 @@ __check_mounts() {
 	# pods) without their own instances.
 	__assert_output "nested-devpts" "nscell-dind-devpts-ok" \
 		"$(docker run --rm -t "$_image" \
-			sh -c '[ "$(stat -f -c %T /dev/pts)" = devpts ] && printf nscell-dind-devpts-ok')"
+			sh -c '[ "$(stat -f -c %T /dev/pts)" = devpts ] && \
+				[ "$(stat -c %u:%g /dev/pts/ptmx)" = 0:0 ] && \
+				[ "$(stat -c %u:%g /dev/pts)" = 0:0 ] && \
+				printf nscell-dind-devpts-ok')"
 	__assert_output "nested-mqueue" "nscell-dind-mqueue-ok" \
 		"$(docker run --rm --ipc=private "$_image" \
 			sh -c '[ "$(stat -f -c %T /dev/mqueue)" = mqueue ] && printf nscell-dind-mqueue-ok')"
