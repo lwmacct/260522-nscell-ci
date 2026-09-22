@@ -51,9 +51,28 @@ __assert_output "own-devpts-owner" "0:0 0:0" \
 # shellcheck disable=SC2016 # The probe is a script for the inner shell and must not expand here.
 __privileged_probe='_eff=$(tr -d " \t" </proc/self/status | grep "^CapEff:" | cut -d: -f2); [ "$(( 0x${_eff} & 0x200000 ))" -ne 0 ] && test -c /dev/kmsg && printf nscell-dind-privileged-ok'
 
+__check_default_config_mounts() {
+	_image="$1"
+
+	# Docker generates these three files outside the inner rootfs and installs
+	# them with bind mounts. A missing mount can leave an image-layer placeholder
+	# (often an empty mode-0755 file) even though containerd/Docker generated the
+	# real configuration successfully.
+	docker run --rm "$_image" sh -c '
+		for _file in /etc/hostname /etc/hosts /etc/resolv.conf; do
+			[ -s "$_file" ] || exit 1
+			grep -q " $_file " /proc/self/mountinfo || exit 1
+		done
+		grep -q "^nameserver " /etc/resolv.conf
+	'
+	echo "dind-ok default-config-mounts"
+}
+
 __check_mounts() {
 	_image="$1"
 	_src="$2"
+
+	__check_default_config_mounts "$_image"
 
 	# A directory of this container's world, bound read-only into an inner
 	# container (the `docker run -v <dir>:<dir>` shape).
