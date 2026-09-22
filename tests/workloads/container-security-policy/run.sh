@@ -711,6 +711,58 @@ __check_audit_log_sampling() {
   echo "audit-log-sampling-ok lines=${_line_growth} counter_delta=$((_after - _before))"
 }
 
+__virtfs_container_metric() {
+  local _metric="$1"
+  curl -s http://127.0.0.1:9618/metrics |
+    awk -v _metric="^${_metric}\\{container_hash=" '$0 ~ _metric { print $NF; exit }'
+}
+
+__check_virtfs_request_accounting() {
+  local _name="$1"
+  local _requests_before _requests_after _duration_before _duration_after
+  local _cpu_before _cpu_after _active
+
+  __log "checking per-container VirtFS request accounting for ${_name}"
+  _requests_before="$(__virtfs_container_metric nscell_virtfs_fuse_container_requests_total)"
+  _duration_before="$(__virtfs_container_metric nscell_virtfs_fuse_request_duration_seconds_total)"
+  _cpu_before="$(__virtfs_container_metric nscell_virtfs_fuse_attributed_cpu_seconds_total)"
+  [[ "${_requests_before}" =~ ^[0-9]+$ ]] || _requests_before=0
+  [[ "${_duration_before}" =~ ^[0-9]+([.][0-9]+)?$ ]] || _duration_before=0
+  [[ "${_cpu_before}" =~ ^[0-9]+([.][0-9]+)?$ ]] || _cpu_before=0
+
+  timeout 120 docker exec "$_name" python -c \
+    'for _ in range(500): open("/proc/meminfo", "rb").read()' >/dev/null
+
+  _requests_after="$(__virtfs_container_metric nscell_virtfs_fuse_container_requests_total)"
+  _duration_after="$(__virtfs_container_metric nscell_virtfs_fuse_request_duration_seconds_total)"
+  _cpu_after="$(__virtfs_container_metric nscell_virtfs_fuse_attributed_cpu_seconds_total)"
+  _active="$(__virtfs_container_metric nscell_virtfs_fuse_active_requests)"
+  if ! [[ "${_requests_after}" =~ ^[0-9]+$ ]] ||
+    ! [[ "${_duration_after}" =~ ^[0-9]+([.][0-9]+)?$ ]] ||
+    ! [[ "${_cpu_after}" =~ ^[0-9]+([.][0-9]+)?$ ]] ||
+    [[ "${_active}" != 0 ]]; then
+    echo "per-container VirtFS metrics are missing or still active: requests=${_requests_after:-} duration=${_duration_after:-} cpu=${_cpu_after:-} active=${_active:-}" >&2
+    exit 1
+  fi
+  if ((_requests_after - _requests_before < 500)); then
+    echo "per-container VirtFS request delta = $((_requests_after - _requests_before)), want at least 500" >&2
+    exit 1
+  fi
+  if awk -v before="${_duration_before}" -v after="${_duration_after}" 'BEGIN { exit !(after > before) }'; then
+    :
+  else
+    echo "per-container VirtFS serving duration did not increase" >&2
+    exit 1
+  fi
+  if awk -v before="${_cpu_before}" -v after="${_cpu_after}" 'BEGIN { exit !(after > before) }'; then
+    :
+  else
+    echo "per-container VirtFS attributed CPU did not increase" >&2
+    exit 1
+  fi
+  echo "virtfs-request-accounting-ok requests=$((_requests_after - _requests_before))"
+}
+
 __check_host_target_task_gate() (
   local _name="${_container_security_policy_name}-host-target"
   local _source_cgroup _log_start
@@ -854,6 +906,7 @@ __run_system_container() {
   __check_proc_sys "$_name"
   __log "checking sys module security policy for ${_name}"
   __run_probe "$_name" sys-module-policy
+  __check_virtfs_request_accounting "$_name"
 }
 
 __check_kernel_view_bind_admission() {
