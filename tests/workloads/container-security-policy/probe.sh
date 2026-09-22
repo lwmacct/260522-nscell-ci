@@ -309,6 +309,70 @@ raise RuntimeError("conntrack hashsize write open unexpectedly succeeded")
 PY
 }
 
+__check_host_fingerprint() {
+	python3 - <<'PY'
+import os
+import re
+import uuid
+
+empty_paths = (
+    "/proc/version",
+    "/proc/partitions",
+    "/proc/diskstats",
+    "/proc/devices",
+    "/proc/misc",
+)
+for path in empty_paths:
+    if not os.path.isfile(path):
+        raise RuntimeError(f"host fingerprint view is missing: {path}")
+    if open(path, "rb").read() != b"":
+        raise RuntimeError(f"host fingerprint view is not empty: {path}")
+
+for path in (
+    "/sys/block",
+    "/sys/class/block",
+    "/sys/dev/block",
+):
+    if not os.path.isdir(path) or os.listdir(path):
+        raise RuntimeError(f"host block topology alias is not empty: {path}")
+if "block" in os.listdir("/sys/devices/virtual"):
+    raise RuntimeError("/sys/devices/virtual exposes its block subtree")
+host_block_device = os.environ.get("CI_HOST_BLOCK_DEVICE", "")
+if host_block_device and os.path.exists(host_block_device):
+    raise RuntimeError(f"host block device remains reachable by absolute path: {host_block_device}")
+
+boot_path = "/proc/sys/kernel/random/boot_id"
+boot_id = open(boot_path, "r").read().strip()
+if open(boot_path, "r").read().strip() != boot_id:
+    raise RuntimeError("boot_id is not stable within the container")
+parsed_boot_id = uuid.UUID(boot_id)
+if parsed_boot_id.variant != uuid.RFC_4122 or parsed_boot_id.version != 4:
+    raise RuntimeError(f"boot_id is not an RFC 4122 v4 UUID: {boot_id}")
+if boot_id == os.environ.get("CI_HOST_BOOT_ID", ""):
+    raise RuntimeError("boot_id equals the host boot_id")
+
+dmi_id = "/sys/devices/virtual/dmi/id"
+for path in (
+    f"{dmi_id}/product_name",
+    "/sys/class/dmi/id/product_name",
+):
+    if os.path.exists(path):
+        raise RuntimeError(f"host DMI identity is exposed: {path}")
+entries = os.listdir(dmi_id)
+if entries != ["product_uuid"]:
+    raise RuntimeError(f"DMI id exposes unexpected entries: {entries}")
+
+product_uuid = open(f"{dmi_id}/product_uuid", "r").read().strip()
+parsed_uuid = uuid.UUID(product_uuid)
+if parsed_uuid.variant != uuid.RFC_4122 or parsed_uuid.version != 4:
+    raise RuntimeError(f"product_uuid is not an RFC 4122 v4 UUID: {product_uuid}")
+if product_uuid == os.environ.get("CI_HOST_PRODUCT_UUID", ""):
+    raise RuntimeError("product_uuid equals the host product_uuid")
+
+print("host-fingerprint-policy-ok")
+PY
+}
+
 __check_module_autoload_deny() {
 	python3 - <<'PY'
 import socket
@@ -439,6 +503,9 @@ __main() {
 		sys-module-policy)
 			__check_sys_module
 			;;
+		host-fingerprint-policy)
+			__check_host_fingerprint
+			;;
 		module-autoload-deny)
 			__check_module_autoload_deny
 			;;
@@ -452,7 +519,7 @@ __main() {
 			__check_process_identity_isolation
 			;;
 		*)
-			echo "usage: $0 {cgroup-delegation|privileged-resource-negative-policy|cgroup-subtree-mount-policy|kernel-interface-file-policy|cgroup-subtree-kernel-interface-file-policy|xattr-negative-policy|xattr-trusted-overlay-policy|proc-sys-policy|sys-module-policy|module-autoload-deny|audit-log-flood|control-plane-isolation|process-identity-isolation}" >&2
+			echo "usage: $0 {cgroup-delegation|privileged-resource-negative-policy|cgroup-subtree-mount-policy|kernel-interface-file-policy|cgroup-subtree-kernel-interface-file-policy|xattr-negative-policy|xattr-trusted-overlay-policy|proc-sys-policy|sys-module-policy|host-fingerprint-policy|module-autoload-deny|audit-log-flood|control-plane-isolation|process-identity-isolation}" >&2
 			exit 2
 			;;
 	esac

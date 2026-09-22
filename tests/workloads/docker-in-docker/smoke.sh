@@ -172,6 +172,38 @@ __check_build() {
 	rm -rf "$_context"
 }
 
+__check_host_fingerprints() {
+	_image="$1"
+
+	_outer_boot_id="$(cat /proc/sys/kernel/random/boot_id)"
+	for _file in /proc/version /proc/partitions /proc/diskstats /proc/devices /proc/misc; do
+		[ "$(wc -c <"$_file")" -eq 0 ] || __fail "outer fingerprint view is not empty: $_file"
+	done
+	for _dir in /sys/block /sys/class/block /sys/dev/block; do
+		[ -d "$_dir" ] && [ -z "$(ls -A "$_dir")" ] || __fail "outer block topology view is not empty: $_dir"
+	done
+
+	__assert_output "nested-boot-id" "$_outer_boot_id" \
+		"$(docker run --rm "$_image" cat /proc/sys/kernel/random/boot_id)"
+	__assert_output "nested-fingerprints" "0" \
+		"$(docker run --rm "$_image" sh -c 'wc -c /proc/version /proc/partitions /proc/diskstats /proc/devices /proc/misc | tail -1 | tr -dc "0-9"')"
+	docker run --rm "$_image" sh -c '
+		for _dir in /sys/block /sys/class/block /sys/dev/block; do
+			if [ ! -d "$_dir" ] || [ -n "$(ls -A "$_dir")" ]; then
+				exit 1
+			fi
+		done
+	'
+	docker run --rm "$_image" sh -c '
+		if [ -e /sys/devices/virtual/dmi/id/product_name ] || [ -e /sys/class/dmi/id/product_name ]; then
+			exit 1
+		fi
+		_uuid="$(cat /sys/devices/virtual/dmi/id/product_uuid)"
+		printf "%s" "$_uuid" | grep -Eq "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+	'
+	echo "dind-ok host-fingerprints"
+}
+
 __check_refusals() {
 	_image="$1"
 
@@ -217,6 +249,7 @@ __main() {
 
 	__check_mounts "$_image" "$_src"
 	__check_build "$_image"
+	__check_host_fingerprints "$_image"
 	__check_refusals "$_image"
 
 	rm -rf "$_src"

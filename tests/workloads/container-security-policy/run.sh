@@ -854,6 +854,24 @@ __check_proc_sys() {
     "$_name" nscell-ci-container-security-policy-probe proc-sys-policy
 }
 
+__check_host_fingerprint() {
+  local _name="$1" _host_boot_id _host_product_uuid _host_block_link _host_block_device
+
+  __log "checking host fingerprint minimization for ${_name}"
+  _host_boot_id="$(cat /proc/sys/kernel/random/boot_id)"
+  _host_product_uuid="$(cat /sys/devices/virtual/dmi/id/product_uuid 2>/dev/null || printf '%s\n' '')"
+  _host_block_link="$(find /sys/class/block -mindepth 1 -maxdepth 1 -type l | head -1 || true)"
+  _host_block_device=""
+  if [[ -n "$_host_block_link" ]]; then
+    _host_block_device="$(readlink -f "$_host_block_link")"
+  fi
+  docker exec \
+    -e "CI_HOST_BOOT_ID=${_host_boot_id}" \
+    -e "CI_HOST_PRODUCT_UUID=${_host_product_uuid}" \
+    -e "CI_HOST_BLOCK_DEVICE=${_host_block_device}" \
+    "$_name" nscell-ci-container-security-policy-probe host-fingerprint-policy
+}
+
 __run_system_container() {
   local _name="${_container_security_policy_name}-system"
   local _log_start _probe_output _setxattr_before _getxattr_before
@@ -903,6 +921,7 @@ __run_system_container() {
   __run_probe "$_name" xattr-trusted-overlay-policy
   __assert_xattr_trusted_overlay_audits "$_setxattr_before" "$_getxattr_before"
   __check_proc_sys "$_name"
+  __check_host_fingerprint "$_name"
   __log "checking sys module security policy for ${_name}"
   __run_probe "$_name" sys-module-policy
   __check_virtfs_request_accounting "$_name"
