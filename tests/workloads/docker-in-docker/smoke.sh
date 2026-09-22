@@ -41,6 +41,19 @@ __assert_refused() {
 __assert_output "own-devpts-owner" "0:0 0:0" \
 	"$(stat -c '%u:%g' /dev/pts /dev/pts/ptmx | tr '\n' ' ' | sed 's/ $//')"
 
+# The kernel-view filesystems this container gets are host-user-namespace mounts
+# by necessity (sysfs root inodes are built by the kernel with host root, mqueue
+# cannot be mounted inside a user namespace at all), so their mount roots are
+# chowned into the container's id map. /sys and /dev/mqueue therefore belong to
+# the container's root and accept chown/chmod from inside; before that they were
+# 65534:65534 and every ownership change was refused with EPERM.
+__assert_output "own-kernel-view-owner" "nscell-dind-kernel-view-ok" \
+	"$(for _path in /sys /dev/mqueue; do \
+		[ "$(stat -c '%u:%g' "${_path}")" = "0:0" ] || exit 1; \
+	done && chown 0:0 /sys && chmod 755 /sys && \
+		chown 0:0 /dev/mqueue && chmod 755 /dev/mqueue && \
+		printf nscell-dind-kernel-view-ok)"
+
 # __privileged_probe succeeds only inside a privileged inner container: it keeps
 # CAP_SYS_ADMIN (bit 21) and gets the /dev entry Docker adds to its rootfs.
 #
