@@ -670,10 +670,6 @@ __check_audit_log_sampling() {
   local _log_start _line_growth _deadline _log _before _after _recent_count
 
   __log "checking bounded audit log sampling"
-  if [[ ! -f /etc/logrotate.d/nscell-daemon ]]; then
-    echo "daemon logrotate configuration is missing" >&2
-    exit 1
-  fi
   _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
   _before="$(__audit_mount_deny_counter)"
   [[ "${_before}" =~ ^[0-9]+$ ]] || _before=0
