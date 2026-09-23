@@ -51,7 +51,7 @@ __require_kernel_interfaces() {
   grep -q '^CONFIG_FUSE_PASSTHROUGH=y$' "$_kernel_config"
   sudo nscell daemon host status |
     jq -e '
-      .version == 3 and
+      .version == 4 and
       .capabilities.fuse == true and
       .capabilities.fusePassthrough == true and
       ([.probes[].id] | index("fuse-passthrough") != null)

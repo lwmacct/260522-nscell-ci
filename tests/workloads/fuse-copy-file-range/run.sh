@@ -16,7 +16,7 @@ source "${_workload_dir}/library/oci.sh"
 
 _bundle="${_volume_root}/fuse-copy-file-range/bundle"
 _export_name="nscell-oci-export-${_workload_resource_id:-fuse-copy-file-range}"
-_copy_path="/sys/module/nf_conntrack/parameters/hashsize"
+_copy_path="/proc/sys/kernel/hostname"
 _metrics_url="http://127.0.0.1:9618/metrics"
 
 __cleanup() {
@@ -46,10 +46,10 @@ __wait_for_stopped() {
 # 32-bit copy length without anyone noticing. Count both opcodes instead of
 # trusting that the request arrived at all.
 #
-# The copy itself stays a denied, zero-byte one: views are per-file bind mounts
-# (a cross-view copy is EXDEV) and the writable ones only accept offset 0, which
-# a same-file copy cannot use without overlapping the source range. What a
-# nonzero count would add - the 64-bit reply shape - is pinned by
+# The copy stays within the same file because views are per-file bind mounts
+# (a cross-view copy is EXDEV). A non-overlapping destination beyond EOF writes
+# only to the container-scoped proc-sys cache, leaving the host hostname intact.
+# What the nonzero count adds - the 64-bit reply shape - is pinned by
 # TestCopyFileRange64ResponseCarriesTheFullCount in internal/fuse instead.
 __opcode_requests() {
   local _opcode="$1"
@@ -75,39 +75,24 @@ __write_copy_program() {
   sudo tee "${_bundle}/rootfs/tmp/copy_file_range.py" >/dev/null <<'PY'
 import os
 
-path = "/sys/module/nf_conntrack/parameters/hashsize"
+path = "/proc/sys/kernel/hostname"
 result = open("/result", "w", encoding="ascii")
-stage = "read"
-try:
-    before = open(path, "rb").read()
-    source = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
-    stage = "open-write"
-    destination = os.open(path, os.O_WRONLY | os.O_CLOEXEC)
-    stage = "copy"
-    requested = min(4, len(before))
-    if requested == 0:
-        raise OSError("empty copy source")
-    count = os.copy_file_range(source, destination, requested, 0, requested)
-    after = open(path, "rb").read()
-    assert count == 0
-    assert after == before
-    output = f"fuse-copy-file-range-ok:{count}"
-except Exception as error:
-    try:
-        stat = os.stat(path)
-        detail = (
-            f"errno={getattr(error, 'errno', '-')}:uids={os.getuid()}:{os.geteuid()}:"
-            f"stat={stat.st_mode:o}:{stat.st_uid}:{stat.st_gid}"
-        )
-    except OSError:
-        detail = repr(error)
-    output = f"copy-error:stage={stage}:{type(error).__name__}:{detail}"
-result.write(output)
+before = open(path, "rb").read()
+requested = min(4, len(before))
+if requested == 0:
+    raise SystemExit("hostname is too short for the copy probe")
+source = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
+destination = os.open(path, os.O_WRONLY | os.O_CLOEXEC)
+count = os.copy_file_range(source, destination, requested, 0, len(before))
+after = open(path, "rb").read()
+assert count == requested, (count, requested)
+assert after == before, (after, before)
+result.write(f"fuse-copy-file-range-ok:{count}")
 PY
 }
 
 __main() {
-  local _config_tmp _copy64_after _copy64_before _legacy_after _legacy_before _output
+  local _copy64_after _copy64_before _legacy_after _legacy_before _output _bytes_copied
 
   if [[ "${1:-}" == "cleanup" ]]; then
     __cleanup
@@ -145,10 +130,11 @@ __main() {
 
   _output="$(sudo cat "${_bundle}/rootfs/result")"
   printf 'copy-file-range-output=%q\n' "$_output"
-  if [[ "$_output" != "fuse-copy-file-range-ok:0" ]]; then
+  if [[ ! "$_output" =~ ^fuse-copy-file-range-ok:([1-9][0-9]*)$ ]]; then
     echo "copy_file_range program did not complete successfully" >&2
     exit 1
   fi
+  _bytes_copied="${BASH_REMATCH[1]}"
   _copy64_after="$(__copy64_requests)"
   _legacy_after="$(__legacy_copy_requests)"
   printf 'copy-file-range-opcodes: copy_file_range_64=%s->%s legacy=copy_file_range=%s->%s\n' \
@@ -161,7 +147,7 @@ __main() {
     echo "the kernel fell back to the legacy FUSE_COPY_FILE_RANGE opcode" >&2
     exit 1
   fi
-  if ! sudo grep -F "FUSE copy_file_range handled from ${_copy_path} to ${_copy_path}: bytes=0 legacy=false" \
+  if ! sudo grep -F "FUSE copy_file_range handled from ${_copy_path} to ${_copy_path}: bytes=${_bytes_copied} legacy=false" \
     "$_daemon_log" >/dev/null; then
     echo "daemon did not record the VirtFS copy_file_range operation" >&2
     sudo tail -100 "$_daemon_log" >&2
