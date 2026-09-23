@@ -11,6 +11,17 @@ cd "$_repo_root"
 
 source "${_workload_dir}/library/env.sh"
 
+_probe_stage="initialization"
+
+__report_probe_failure() {
+  local _code=$?
+
+  if ((_code != 0)); then
+    printf 'kernel-capability-smoke failed during %s (exit %s)\n' \
+      "${_probe_stage}" "${_code}" >&2
+  fi
+}
+
 __require_kernel_floor() {
   local _release _version_floor
 
@@ -690,13 +701,20 @@ __main() {
     return
   fi
 
+  trap __report_probe_failure EXIT
   __require_cmd sudo
   __require_cmd python3
+  _probe_stage="kernel floor check"
   __require_kernel_floor
+  _probe_stage="cgroup v2 check"
   __require_cgroup_v2
+  _probe_stage="kernel interfaces check"
   __require_kernel_interfaces
+  _probe_stage="mount namespace API probe"
   __probe_mount_namespace_apis
+  _probe_stage="completion"
   echo "kernel-capability-smoke-validation-ok"
+  trap - EXIT
 }
 
 __main "$@"
