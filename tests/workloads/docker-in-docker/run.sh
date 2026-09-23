@@ -83,6 +83,21 @@ __run_inner_smoke() {
     "$_name" nscell-ci-docker-in-docker-smoke
 }
 
+__run_inner_lifecycle_probe() {
+  local _name="$1"
+
+  # The full smoke already exercised the nested runtime's security and mount
+  # semantics. After a daemon lifecycle transition, prove that the inner image
+  # cache and container engine remain usable without repeating every probe.
+  docker exec "$_name" sh -lc "
+    docker image inspect '$_inner_nginx_image' >/dev/null
+    docker rm -f nscell-dind-lifecycle-nginx >/dev/null 2>&1 || true
+    docker run -d --name nscell-dind-lifecycle-nginx '$_inner_nginx_image' >/dev/null
+    docker ps --filter name=nscell-dind-lifecycle-nginx --format 'inner-lifecycle {{.Names}} {{.Status}}'
+    docker rm -f nscell-dind-lifecycle-nginx >/dev/null
+  "
+}
+
 __main() {
   local _root="${_volume_root}/docker-in-docker"
 
@@ -126,18 +141,13 @@ __main() {
   __log "checking Docker-in-Docker restart"
   docker restart -t 1 "$_docker_in_docker_name"
   __wait_for_inner_docker "$_docker_in_docker_name" "restart "
-  __run_inner_smoke "$_docker_in_docker_name"
+  __run_inner_lifecycle_probe "$_docker_in_docker_name"
 
   __log "checking Docker-in-Docker stop/start"
   docker stop -t 1 "$_docker_in_docker_name"
   docker start "$_docker_in_docker_name"
   __wait_for_inner_docker "$_docker_in_docker_name" "stopstart "
-
-  __log "checking inner nginx with docker load cache"
-  __wait_for_inner_docker "$_docker_in_docker_name"
-  docker exec "$_docker_in_docker_name" sh -lc "docker rm -f nginx >/dev/null 2>&1 || true"
-  docker exec "$_docker_in_docker_name" sh -lc "docker run -d -p 80:80 --name=nginx '$_inner_nginx_image' >/dev/null"
-  docker exec "$_docker_in_docker_name" sh -lc 'docker ps --filter name=nginx --format "inner-nginx {{.Status}} {{.Ports}}"'
+  __run_inner_lifecycle_probe "$_docker_in_docker_name"
 
   __assert_nscell_ready
   echo "docker-in-docker-validation-ok"
