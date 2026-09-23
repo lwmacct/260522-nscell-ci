@@ -95,9 +95,9 @@ main inputs are:
 | `NSCELL_CI_TEST_ROOT` | `/tmp/nscell` | test workspace root |
 | `NSCELL_CI_IMAGE_CACHE_DIR` | `${NSCELL_CI_TEST_ROOT}/images` | image cache |
 | `NSCELL_CI_RESET_DAEMON_STATE` | `1` | start each disposable guest from clean daemon state |
-| `NSCELL_RELEASE_ROOT` | `/opt/nscell/releases` | release directory inside the guest |
-| `NSCELL_CURRENT_LINK` | `/opt/nscell/current` | current release symlink |
-| `NSCELL_DAEMON_LOG` | `/var/log/nscell-daemon.log` | guest daemon log |
+| `NSCELL_RELEASE_ROOT` | `/usr/lib/nscell/releases` | release directory inside the guest |
+| `NSCELL_CURRENT_LINK` | `/usr/lib/nscell/current` | current release symlink |
+| `NSCELL_DAEMON_LOG` | `/var/log/nscell/daemon.log` | guest daemon log |
 | `NSCELL_WORKLOAD_RUN_ID` | Actions run and attempt | resource naming suffix |
 
 Workload image and container names are defined near each workload in

@@ -128,7 +128,7 @@ __main() {
   _docker_pid="$(systemctl show --property MainPID --value docker.service)"
   [[ "$_daemon_pid" =~ ^[1-9][0-9]*$ && "$_docker_pid" =~ ^[1-9][0-9]*$ ]]
   __container_capability_exists "$_container_id_a"
-  sudo findmnt -rn -T "/var/lib/nscellfs/${_container_id_a}" -o FSTYPE |
+  sudo findmnt -rn -T "/var/lib/nscell/virtfs/${_container_id_a}" -o FSTYPE |
     grep -Eq '^fuse(\.nscellfs)?$'
   sudo systemctl kill --kill-whom=main --signal=SIGKILL nscell-daemon.service
   __wait_for_exit "$_daemon_pid"

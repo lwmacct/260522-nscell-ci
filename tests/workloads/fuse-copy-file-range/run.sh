@@ -135,7 +135,7 @@ __main() {
     --bundle "$_bundle" \
     --pid-file "${_bundle}/init.pid" \
     "$_fuse_copy_file_range_name"
-  sudo findmnt -rn -T "/var/lib/nscellfs/${_fuse_copy_file_range_name}" -o FSTYPE |
+  sudo findmnt -rn -T "/var/lib/nscell/virtfs/${_fuse_copy_file_range_name}" -o FSTYPE |
     grep -Eq '^fuse(\.nscellfs)?$'
   sudo nscell --root "$_oci_runtime_root" start "$_fuse_copy_file_range_name"
   if ! __wait_for_stopped; then

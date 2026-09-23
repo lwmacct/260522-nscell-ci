@@ -32,7 +32,7 @@ __pull_guest_file() {
 __collect_guest_logs() {
   mkdir -p "${_log_dir}"
 
-  __pull_guest_file /var/log/nscell-daemon.log "${_log_dir}/nscell-daemon.log"
+  __pull_guest_file /var/log/nscell/daemon.log "${_log_dir}/nscell-daemon.log"
   __pull_guest_file /var/log/nscell-runtime-invocations.log \
     "${_log_dir}/nscell-runtime-invocations.log"
   __pull_guest_file /var/log/nscell-runtime.log "${_log_dir}/nscell-runtime.log"
@@ -89,7 +89,7 @@ __collect_guest_logs() {
       test -f /var/log/nscell-runtime-invocations.log && cat /var/log/nscell-runtime-invocations.log || true
       test -f /var/log/nscell-runtime.log && cat /var/log/nscell-runtime.log || true
     } 2>&1
-    test -f /var/log/nscell-daemon.log && cat /var/log/nscell-daemon.log || true
+    test -f /var/log/nscell/daemon.log && cat /var/log/nscell/daemon.log || true
   ' >"${_log_dir}/guest-diagnostics.log" 2>&1 || true
   if __bounded "${_pull_timeout}" sudo incus exec "${_vm_name}" -- \
     test -d /data/nscell/runs >/dev/null 2>&1; then

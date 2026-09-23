@@ -11,9 +11,9 @@ _nscell_image="${NSCELL_IMAGE:-ghcr.io/lwmacct/260522-nscell:latest}"
 _test_root="${NSCELL_CI_TEST_ROOT:-/tmp/nscell}"
 _image_cache_dir="${NSCELL_CI_IMAGE_CACHE_DIR:-${_test_root}/images}"
 _target_platform="${NSCELL_IMAGE_PLATFORM:-linux/amd64}"
-_release_root="${NSCELL_RELEASE_ROOT:-/opt/nscell/releases}"
-_current_link="${NSCELL_CURRENT_LINK:-/opt/nscell/current}"
-_daemon_log="${NSCELL_DAEMON_LOG:-/var/log/nscell-daemon.log}"
+_release_root="${NSCELL_RELEASE_ROOT:-/usr/lib/nscell/releases}"
+_current_link="${NSCELL_CURRENT_LINK:-/usr/lib/nscell/current}"
+_daemon_log="${NSCELL_DAEMON_LOG:-/var/log/nscell/daemon.log}"
 _reset_daemon_state="${NSCELL_CI_RESET_DAEMON_STATE:-1}"
 _run_id="${NSCELL_WORKLOAD_RUN_ID:-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}}"
 _resource_id="$(printf '%s' "$_run_id" | tr -c '[:alnum:]_.-' '-')"
@@ -100,12 +100,13 @@ __configure_apparmor_fuse() {
   fi
   __require_cmd apparmor_parser
 
+  sudo install -d -m 0700 /var/log/nscell
   sudo install -d -m 0755 /etc/apparmor.d/local
   _temporary_profile="$(mktemp)"
   cat >"$_temporary_profile" <<'EOF'
 # NSCell owns per-container FUSE mounts below this private root.
-mount fstype=@{fuse_types} options=(nosuid,nodev) options in (ro,rw,noatime,dirsync,nodiratime,noexec,sync) -> /var/lib/nscellfs/**/,
-umount /var/lib/nscellfs/**/,
+mount fstype=@{fuse_types} options=(nosuid,nodev) options in (ro,rw,noatime,dirsync,nodiratime,noexec,sync) -> /var/lib/nscell/virtfs/**/,
+umount /var/lib/nscell/virtfs/**/,
 EOF
   sudo install -m 0644 "$_temporary_profile" "$_local_profile"
   rm -f "$_temporary_profile"
@@ -317,6 +318,8 @@ __restart_nscell_services() {
   docker ps -a --format '{{.Names}}' |
     awk '/^nscell-(docker-in-docker|kubernetes-k3s|systemd-pid1|procfs-memory|procfs-cpu|seccomp-notify-concurrency|container-security-policy)/ { print }' |
     xargs -r docker rm -f >/dev/null 2>&1 || true
+  sudo install -d -m 0700 "$(dirname "$_daemon_log")"
+  sudo install -d -m 0755 /var/lib/nscell/virtfs
   sudo truncate -s 0 "$_daemon_log" 2>/dev/null || sudo install -m 0600 /dev/null "$_daemon_log"
   sudo rm -f "${_daemon_log}".startup-attempt-*
   sudo truncate -s 0 /var/log/nscell-runtime-invocations.log 2>/dev/null || true
@@ -326,7 +329,7 @@ __restart_nscell_services() {
   while read -r _mp; do
     [[ -n "$_mp" ]] || continue
     sudo umount -l "$_mp" || true
-  done < <(awk '$0 ~ / - fuse nscellfs / && $5 ~ /^\/var\/lib\/nscellfs\// {print $5}' /proc/self/mountinfo)
+  done < <(awk '$0 ~ / - fuse nscellfs / && $5 ~ /^\/var\/lib\/nscell\/virtfs\// {print $5}' /proc/self/mountinfo)
   sudo rm -f /run/nscell/daemon.sock /run/nscell/daemon.pid
   sudo rm -rf /run/nscell/containers
   case "$_reset_daemon_state" in
@@ -340,8 +343,8 @@ __restart_nscell_services() {
     __log "resetting daemon state and managed-volume roots"
     sudo rm -rf /var/lib/nscell/state /var/lib/nscell/work /run/nscell/runtime
   fi
-  if sudo test -d /var/lib/nscellfs; then
-    sudo find /var/lib/nscellfs -mindepth 1 -maxdepth 1 -xdev -exec rm -rf -- {} + 2>/dev/null || true
+  if sudo test -d /var/lib/nscell/virtfs; then
+    sudo find /var/lib/nscell/virtfs -mindepth 1 -maxdepth 1 -xdev -exec rm -rf -- {} + 2>/dev/null || true
   fi
   __start_nscell_daemon
   sudo systemctl restart docker

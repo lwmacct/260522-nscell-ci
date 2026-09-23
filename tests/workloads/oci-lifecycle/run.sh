@@ -85,7 +85,7 @@ __main() {
   _pid="$(sudo cat "${_bundle}/init.pid")"
   sudo test -d "/proc/${_pid}"
   __container_capability_exists "$_oci_lifecycle_id"
-  sudo findmnt -rn -T "/var/lib/nscellfs/${_oci_lifecycle_id}" -o FSTYPE |
+  sudo findmnt -rn -T "/var/lib/nscell/virtfs/${_oci_lifecycle_id}" -o FSTYPE |
     grep -Eq '^fuse(\.nscellfs)?$'
 
   __log "validating start, exec, stats, pause, and resume"

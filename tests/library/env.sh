@@ -28,7 +28,7 @@ fi
 _image_cache_dir="${NSCELL_CI_IMAGE_CACHE_DIR:-${_test_root}/images}"
 _volume_root="${NSCELL_CI_VOLUME_ROOT:-${_workload_run_root}/volumes}"
 _log_root="${NSCELL_CI_LOG_ROOT:-${_workload_run_root}/logs}"
-_daemon_log="${NSCELL_DAEMON_LOG:-/var/log/nscell-daemon.log}"
+_daemon_log="${NSCELL_DAEMON_LOG:-/var/log/nscell/daemon.log}"
 
 _python_alpine_image="${NSCELL_CI_PYTHON_ALPINE_IMAGE:-docker.io/library/python:3.14.4-alpine3.23}"
 _oci_base_image="${NSCELL_CI_OCI_BASE_IMAGE:-${_python_alpine_image}}"
