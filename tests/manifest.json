@@ -10,6 +10,7 @@
     {"name":"docker-in-docker","kind":"workload","modes":{"vm":{"class":"runtime","timeout_minutes":10}}},
     {"name":"kubernetes-k3s","kind":"workload","modes":{"vm":{"class":"runtime","timeout_minutes":10}}},
     {"name":"oci-lifecycle","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":5,"group":"light"}}},
+    {"name":"oci-tty-lifecycle","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":4,"group":"light"}}},
     {"name":"oci-mount-semantics","kind":"workload","modes":{"vm":{"class":"semantics","timeout_minutes":4,"group":"light"}}},
     {"name":"virtfs-sysfs-policy","kind":"workload","modes":{"vm":{"class":"policy","timeout_minutes":4,"group":"light"}}},
     {"name":"fuse-cost-attribution","kind":"workload","modes":{"vm":{"class":"experiment","timeout_minutes":5}}},
