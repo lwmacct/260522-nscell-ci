@@ -252,6 +252,52 @@ print("xattr-trusted-overlay-policy-ok")
 PY
 }
 
+__check_xattr_selinux_label_policy() {
+	python3 - <<'PY'
+import errno
+import os
+import sys
+
+base = f"/tmp/nscell-ci-xattr-selinux-{os.getpid()}"
+path = os.path.join(base, "target")
+name = b"security.selinux"
+
+os.makedirs(base, exist_ok=True)
+with open(path, "wb") as f:
+    f.write(b"data")
+
+try:
+    os.getxattr(path, name)
+except OSError as exc:
+    if exc.errno == errno.EPERM:
+        raise SystemExit("security.selinux read was denied by BPF policy")
+    # A filesystem without an SELinux label may return ENODATA or another
+    # filesystem-specific error. The important contract is that NSCell does not
+    # replace that result with EPERM.
+
+for operation, malformed_name in (
+    ("getxattr", b"security.selinuxx"),
+    ("setxattr", name),
+    ("removexattr", name),
+):
+    try:
+        if operation == "getxattr":
+            os.getxattr(path, malformed_name)
+        elif operation == "setxattr":
+            os.setxattr(path, malformed_name, b"label")
+        else:
+            os.removexattr(path, malformed_name)
+    except OSError as exc:
+        if exc.errno == errno.EPERM:
+            continue
+        print(f"{operation} returned errno {exc.errno}, want EPERM", file=sys.stderr)
+        raise
+    raise RuntimeError(f"{operation} unexpectedly succeeded for SELinux xattr policy")
+
+print("xattr-selinux-label-policy-ok")
+PY
+}
+
 __reject_write() {
 	_path="$1"
 	[ -e "$_path" ] || return 0
@@ -497,6 +543,9 @@ __main() {
 		xattr-trusted-overlay-policy)
 			__check_xattr_trusted_overlay_policy
 			;;
+		xattr-selinux-label-policy)
+			__check_xattr_selinux_label_policy
+			;;
 		proc-sys-policy)
 			__check_proc_sys
 			;;
@@ -519,7 +568,7 @@ __main() {
 			__check_process_identity_isolation
 			;;
 		*)
-			echo "usage: $0 {cgroup-delegation|privileged-resource-negative-policy|cgroup-subtree-mount-policy|kernel-interface-file-policy|cgroup-subtree-kernel-interface-file-policy|xattr-negative-policy|xattr-trusted-overlay-policy|proc-sys-policy|sys-module-policy|host-fingerprint-policy|module-autoload-deny|audit-log-flood|control-plane-isolation|process-identity-isolation}" >&2
+			echo "usage: $0 {cgroup-delegation|privileged-resource-negative-policy|cgroup-subtree-mount-policy|kernel-interface-file-policy|cgroup-subtree-kernel-interface-file-policy|xattr-negative-policy|xattr-trusted-overlay-policy|xattr-selinux-label-policy|proc-sys-policy|sys-module-policy|host-fingerprint-policy|module-autoload-deny|audit-log-flood|control-plane-isolation|process-identity-isolation}" >&2
 			exit 2
 			;;
 	esac

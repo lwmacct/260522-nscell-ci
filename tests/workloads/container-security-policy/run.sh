@@ -460,6 +460,46 @@ __assert_xattr_negative_audits() {
   __assert_bpf_xattr_audit "$_log_start" removexattr deny user.nscell_ci_denied
 }
 
+__assert_no_bpf_xattr_audit() {
+  local _log_start="$1"
+  local _operation="$2"
+  local _decision="$3"
+  local _xattr_name="$4"
+  local _deadline _log
+
+  _deadline=$((SECONDS + 3))
+  while ((SECONDS <= _deadline)); do
+    _log="$(tail -n +"$((_log_start + 1))" "$_daemon_log" 2>/dev/null || true)"
+    if awk \
+      -v _operation="operation=${_operation}" \
+      -v _decision="decision=${_decision}" \
+      -v _xattr_name="name=${_xattr_name}" \
+      'index($0, "BPF LSM gate audit") &&
+			 index($0, _operation) &&
+			 index($0, _decision) &&
+			 index($0, _xattr_name) {
+				for (i = 1; i <= NF; i++) {
+					if ($i == _xattr_name) {
+						found = 1
+					}
+				}
+			}
+		 END { exit !found }' <<<"$_log"; then
+      echo "unexpected BPF LSM xattr audit for operation=${_operation} decision=${_decision} name=${_xattr_name}" >&2
+      grep -F "name=${_xattr_name}" <<<"$_log" >&2 || true
+      exit 1
+    fi
+    sleep 0.5
+  done
+}
+
+__assert_xattr_selinux_label_audits() {
+  local _log_start="$1"
+
+  __assert_no_bpf_xattr_audit "$_log_start" getxattr deny security.selinux
+  __assert_bpf_xattr_audit "$_log_start" getxattr deny security.selinuxx
+}
+
 # The trusted-overlay xattr allow path is counted in BPF instead of streamed:
 # one image build produces thousands of them, so they no longer become log lines.
 __allow_counter() {
@@ -914,6 +954,10 @@ __run_system_container() {
   _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
   __run_probe "$_name" xattr-negative-policy
   __assert_xattr_negative_audits "$_log_start"
+  __log "checking SELinux xattr label policy in ${_name}"
+  _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
+  __run_probe "$_name" xattr-selinux-label-policy
+  __assert_xattr_selinux_label_audits "$_log_start"
   __log "checking trusted overlay xattr policy in ${_name}"
   _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
   _setxattr_before="$(__allow_counter setxattr || printf '0')"
