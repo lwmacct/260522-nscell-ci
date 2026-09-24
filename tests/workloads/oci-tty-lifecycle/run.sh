@@ -76,7 +76,7 @@ __main() {
     --runtime nscell \
     --tty \
     "$_oci_base_image" \
-    python -c 'import os, time; print(f"tty stdin={os.isatty(0)} stdout={os.isatty(1)} stderr={os.isatty(2)}", flush=True); time.sleep(86400)' \
+    python -c 'import os, signal, sys, time; signal.signal(signal.SIGTERM, lambda *_: sys.exit(0)); print(f"tty stdin={os.isatty(0)} stdout={os.isatty(1)} stderr={os.isatty(2)}", flush=True); time.sleep(86400)' \
     >/dev/null
   __assert_running
 
@@ -91,8 +91,13 @@ __main() {
     exit 1
   fi
 
-  docker stop --timeout 10 "$_oci_tty_lifecycle_name" >/dev/null
+  docker kill --signal=TERM "$_oci_tty_lifecycle_name" >/dev/null
   __wait_for_exited
+  if [[ "$(docker inspect "$_oci_tty_lifecycle_name" \
+    --format '{{.State.ExitCode}}')" != "0" ]]; then
+    echo "TTY container did not exit cleanly after SIGTERM" >&2
+    exit 1
+  fi
   docker rm "$_oci_tty_lifecycle_name" >/dev/null
   __assert_nscell_ready
 
