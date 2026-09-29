@@ -52,6 +52,20 @@ __container_running() {
     grep -Fxq true
 }
 
+__identity_value() {
+  local _field="$1"
+
+  sudo jq -r --arg _id "$_container_id" --arg _field "$_field" \
+    '.entries[] | select(.containerId == $_id) | .[$_field]' \
+    /var/lib/nscell/identity.json
+}
+
+__identity_entry_exists() {
+	sudo jq -e --arg _id "$_container_id" '
+		.version == 2 and any(.entries[]; .containerId == $_id)
+	' /var/lib/nscell/identity.json >/dev/null
+}
+
 __wait_for_container_stop() {
   local _deadline=$((SECONDS + 30))
 
@@ -87,7 +101,7 @@ __assert_daemon_accepting() {
 }
 
 __main() {
-  local _container_id _daemon_pid _new_lines
+  local _container_id _daemon_pid _new_lines _identity_start _identity_anchor
 
   if [[ "${1:-}" == "cleanup" ]]; then
     __cleanup
@@ -130,6 +144,23 @@ __main() {
     return 1
   fi
 
+  __log "capturing the Docker overlay durable identity anchor"
+  sudo jq -e '.version == 2' /var/lib/nscell/identity.json >/dev/null
+  _identity_start="$(__identity_value start)"
+  _identity_anchor="$(__identity_value storageAnchor)"
+  [[ "$_identity_start" =~ ^[1-9][0-9]+$ && -n "$_identity_anchor" ]] || {
+    echo "identity entry is invalid: start=${_identity_start:-empty} anchor=${_identity_anchor:-empty}" >&2
+    return 1
+  }
+  sudo test -d "$_identity_anchor" || {
+    echo "identity storage anchor is missing while Docker runs: $_identity_anchor" >&2
+    return 1
+  }
+  sudo test -d "/var/lib/docker/rootfs/overlayfs/${_container_id}" || {
+    echo "temporary Docker rootfs is missing while the container runs" >&2
+    return 1
+  }
+
   # The daemon log is root-owned, and a redirect would be performed by this
   # unprivileged shell, so read the line count through sudo itself.
   _daemon_log_offset="$(sudo wc -l "${_daemon_log}" | awk '{ print $1 }')"
@@ -165,6 +196,37 @@ __main() {
     return 1
   fi
   __assert_daemon_accepting
+
+  __log "asserting the stopped Docker definition keeps its subordinate identity"
+  sudo test -d "$_identity_anchor" || {
+    echo "storage anchor disappeared after Docker stop: $_identity_anchor" >&2
+    return 1
+  }
+  [[ "$(__identity_value start)" == "$_identity_start" ]] || {
+    echo "stopped container subordinate start changed" >&2
+    return 1
+  }
+  [[ "$(__identity_value storageAnchor)" == "$_identity_anchor" ]] || {
+    echo "stopped container storage anchor changed" >&2
+    return 1
+  }
+
+  __log "asserting daemon restart collects the identity after Docker removal"
+  docker rm -f "$_daemon_fail_stop_docker_name" >/dev/null
+  sudo test ! -e "$_identity_anchor" || {
+    echo "storage anchor survived Docker removal: $_identity_anchor" >&2
+    return 1
+  }
+  __identity_entry_exists || {
+    echo "identity was deleted before anchor garbage collection ran" >&2
+    return 1
+  }
+  sudo systemctl restart nscell-daemon.service
+  __assert_nscell_ready
+  if __identity_entry_exists; then
+    echo "deleted Docker container survived identity garbage collection" >&2
+    return 1
+  fi
 
   trap - EXIT
   __cleanup
