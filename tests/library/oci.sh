@@ -61,6 +61,36 @@ __container_capability_exists() {
     grep -q .
 }
 
+__assert_container_virtfs() {
+  local _pid="$1"
+  local _path="$2"
+
+  if ! sudo awk -v target="$_path" '
+    $5 == target || index(target, $5 "/") == 1 {
+      if ($0 ~ / - fuse(\.[^ ]+)? nscellfs /) {
+        found = 1
+      }
+    }
+    END { exit !found }
+  ' "/proc/${_pid}/mountinfo"; then
+    echo "container ${_pid} does not expose ${_path} through VirtFS" >&2
+    return 1
+  fi
+}
+
+__assert_no_host_virtfs() {
+  if sudo awk '
+    $0 ~ / - fuse(\.[^ ]+)? nscellfs / {
+      print
+      found = 1
+    }
+    END { exit !found }
+  ' /proc/self/mountinfo; then
+    echo "the host mount namespace contains an NSCell VirtFS mount" >&2
+    return 1
+  fi
+}
+
 __host_cgroup_path() {
   local _pid="$1"
   local _relative

@@ -91,26 +91,9 @@ __setup_runtime_host() {
 }
 
 __configure_apparmor_fuse() {
-  local _profile="/etc/apparmor.d/fusermount3"
-  local _local_profile="/etc/apparmor.d/local/fusermount3"
-  local _temporary_profile
-
-  if ! sudo test -f "$_profile"; then
-    return 0
-  fi
-  __require_cmd apparmor_parser
-
-  sudo install -d -m 0700 /var/log/nscell
-  sudo install -d -m 0755 /etc/apparmor.d/local
-  _temporary_profile="$(mktemp)"
-  cat >"$_temporary_profile" <<'EOF'
-# NSCell owns per-container FUSE mounts below this private root.
-mount fstype=@{fuse_types} options=(nosuid,nodev) options in (ro,rw,noatime,dirsync,nodiratime,noexec,sync) -> /var/lib/nscell/virtfs/**/,
-umount /var/lib/nscell/virtfs/**/,
-EOF
-  sudo install -m 0644 "$_temporary_profile" "$_local_profile"
-  rm -f "$_temporary_profile"
-  sudo apparmor_parser -r "$_profile"
+  # NSCell opens /dev/fuse and uses fsopen/fsmount directly. It does not invoke
+  # fusermount3 or expose a host-side VirtFS mount root to AppArmor.
+  return 0
 }
 
 __init_ci_dirs() {
@@ -319,17 +302,12 @@ __restart_nscell_services() {
     awk '/^nscell-(docker-in-docker|kubernetes-k3s|systemd-pid1|procfs-memory|procfs-cpu|seccomp-notify-concurrency|container-security-policy)/ { print }' |
     xargs -r docker rm -f >/dev/null 2>&1 || true
   sudo install -d -m 0700 "$(dirname "$_daemon_log")"
-  sudo install -d -m 0755 /var/lib/nscell/virtfs
   sudo truncate -s 0 "$_daemon_log" 2>/dev/null || sudo install -m 0600 /dev/null "$_daemon_log"
   sudo rm -f "${_daemon_log}".startup-attempt-*
   sudo truncate -s 0 /var/log/nscell-runtime-invocations.log 2>/dev/null || true
   sudo truncate -s 0 /var/log/nscell-runtime.log 2>/dev/null || true
   sudo systemctl reset-failed docker.service nscell-daemon.service || true
   sudo systemctl stop nscell-daemon.service || true
-  while read -r _mp; do
-    [[ -n "$_mp" ]] || continue
-    sudo umount -l "$_mp" || true
-  done < <(awk '$0 ~ / - fuse nscellfs / && $5 ~ /^\/var\/lib\/nscell\/virtfs\// {print $5}' /proc/self/mountinfo)
   sudo rm -f /run/nscell/daemon.sock /run/nscell/daemon.pid
   sudo rm -rf /run/nscell/containers
   case "$_reset_daemon_state" in
@@ -343,8 +321,13 @@ __restart_nscell_services() {
     __log "resetting daemon state and managed-volume roots"
     sudo rm -rf /var/lib/nscell/state /var/lib/nscell/work /run/nscell/runtime
   fi
-  if sudo test -d /var/lib/nscell/virtfs; then
-    sudo find /var/lib/nscell/virtfs -mindepth 1 -maxdepth 1 -xdev -exec rm -rf -- {} + 2>/dev/null || true
+  if sudo test -e /var/lib/nscell/virtfs; then
+    echo "legacy host VirtFS root exists: /var/lib/nscell/virtfs" >&2
+    return 1
+  fi
+  if awk '$0 ~ / - fuse(\.[^ ]+)? nscellfs / { found = 1 } END { exit !found }' /proc/self/mountinfo; then
+    echo "the host mount namespace contains an NSCell VirtFS mount before daemon startup" >&2
+    return 1
   fi
   __start_nscell_daemon
   sudo systemctl restart docker

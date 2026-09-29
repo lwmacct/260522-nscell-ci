@@ -12,6 +12,7 @@ cd "$_repo_root"
 source "${_workload_dir}/library/env.sh"
 source "${_workload_dir}/library/readiness.sh"
 source "${_workload_dir}/library/images.sh"
+source "${_workload_dir}/library/oci.sh"
 
 _daemon_pid=""
 _container_pid=""
@@ -66,8 +67,7 @@ __wait_for_docker_exit() {
 }
 
 __main() {
-  local _exit_code _finished_at _mount_point _started_at
-  local -a _mounts_after _mounts_before
+  local _container_id _exit_code _finished_at _started_at
 
   if [[ "${1:-}" == "cleanup" ]]; then
     __cleanup
@@ -83,7 +83,6 @@ __main() {
 
   __cleanup
   __ensure_host_image "$_oci_base_image"
-  mapfile -t _mounts_before < <(sudo findmnt -rn -t fuse,fuse.nscellfs -o TARGET)
 
   __log "starting a container whose first VirtFS read is delayed"
   docker run -d \
@@ -99,24 +98,17 @@ __main() {
     exit 1
   fi
 
-  mapfile -t _mounts_after < <(sudo findmnt -rn -t fuse,fuse.nscellfs -o TARGET)
-  _mount_point="$(comm -13 \
-    <(printf '%s\n' "${_mounts_before[@]}") \
-    <(printf '%s\n' "${_mounts_after[@]}"))"
-  if [[ -z "$_mount_point" || "$(printf '%s\n' "$_mount_point" | wc -l)" -ne 1 ]]; then
-    echo "unable to identify the new FUSE mount for the timeout container" >&2
-    sudo findmnt -rn -t fuse,fuse.nscellfs -o TARGET >&2
-    exit 1
-  fi
+  _container_id="$(docker inspect "$_fuse_request_timeout_name" --format '{{.Id}}')"
+  __assert_container_virtfs "$_container_pid" /proc/uptime
 
   for _ in $(seq 1 50); do
-    if sudo grep -F "FUSE request timeout negotiated for ${_mount_point}" "$_daemon_log" >/dev/null; then
+    if sudo grep -F "FUSE request timeout negotiated for container ${_container_id}" "$_daemon_log" >/dev/null; then
       break
     fi
     sleep 0.2
   done
-  if ! sudo grep -F "FUSE request timeout negotiated for ${_mount_point}" "$_daemon_log" >/dev/null; then
-    echo "kernel did not negotiate FUSE request timeout for ${_mount_point}" >&2
+  if ! sudo grep -F "FUSE request timeout negotiated for container ${_container_id}" "$_daemon_log" >/dev/null; then
+    echo "kernel did not negotiate a FUSE request timeout for container ${_container_id}" >&2
     sudo tail -100 "$_daemon_log" >&2
     exit 1
   fi
@@ -148,10 +140,7 @@ __main() {
     echo "container exited before the FUSE request timeout could expire" >&2
     exit 1
   fi
-  if sudo findmnt -rn -t fuse,fuse.nscellfs | grep -F "${_mount_point}"; then
-    echo "timed-out VirtFS mount survived server recovery" >&2
-    exit 1
-  fi
+  __assert_no_host_virtfs
   if sudo grep -Eq 'panic|runtime error: invalid memory address' "$_daemon_log"; then
     echo "daemon log contains a crash after FUSE request timeout recovery" >&2
     sudo tail -100 "$_daemon_log" >&2

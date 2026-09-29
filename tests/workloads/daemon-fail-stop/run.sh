@@ -72,8 +72,7 @@ __main() {
   _pid="$(sudo cat "${_bundle}/init.pid")"
   sudo test -d "/proc/${_pid}"
   __container_capability_exists "$_daemon_fail_stop_id"
-  sudo findmnt -rn -T "/var/lib/nscell/virtfs/${_daemon_fail_stop_id}" -o FSTYPE |
-    grep -Eq '^fuse(\.nscellfs)?$'
+  __assert_container_virtfs "$_pid" /proc/stat
 
   __log "stopping daemon and verifying the fail-stop contract"
   sudo systemctl stop nscell-daemon.service
@@ -90,10 +89,7 @@ __main() {
     echo "container capability survived daemon shutdown" >&2
     exit 1
   fi
-  if sudo findmnt -rn -t fuse,fuse.nscellfs | grep -F "/${_daemon_fail_stop_id}"; then
-    echo "VirtFS mount survived daemon shutdown" >&2
-    exit 1
-  fi
+  __assert_no_host_virtfs
 
   __log "restarting daemon and validating a fresh container"
   sudo systemctl start nscell-daemon.service

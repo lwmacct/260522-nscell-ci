@@ -49,14 +49,15 @@ debug VM after confirming that no NSCell workload or state must be preserved:
 ```bash
 docker ps -aq --filter name='^nscell-' | xargs -r docker rm -f
 systemctl stop nscell-daemon.service
-find /var/lib/nscell/virtfs -mindepth 1 -maxdepth 1 -xdev -exec rm -rf -- {} +
+findmnt -t fuse,fuse.nscellfs
 rm -rf /run/nscell/runtime /run/nscell/runtime-roots
 systemctl start nscell-daemon.service
 ```
 
 Never run this cleanup on a host with active workloads or state that must be
-kept; production upgrades follow the drain and rollback procedure in the
-NSCell repository deployment guide.
+kept. The `findmnt` command is diagnostic only: a host mount namespace containing
+`nscellfs` is a defect, not cleanup input. Production upgrades follow the drain
+and rollback procedure in the NSCell repository deployment guide.
 
 ## Reproduce one workload
 

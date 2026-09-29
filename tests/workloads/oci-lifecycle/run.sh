@@ -85,8 +85,7 @@ __main() {
   _pid="$(sudo cat "${_bundle}/init.pid")"
   sudo test -d "/proc/${_pid}"
   __container_capability_exists "$_oci_lifecycle_id"
-  sudo findmnt -rn -T "/var/lib/nscell/virtfs/${_oci_lifecycle_id}" -o FSTYPE |
-    grep -Eq '^fuse(\.nscellfs)?$'
+  __assert_container_virtfs "$_pid" /proc/stat
 
   __log "validating start, exec, stats, pause, and resume"
   sudo nscell --root "$_oci_runtime_root" start "$_oci_lifecycle_id"
@@ -146,10 +145,7 @@ __main() {
     echo "container capability survived OCI delete" >&2
     exit 1
   fi
-  if sudo findmnt -rn -t fuse,fuse.nscellfs | grep -F "/${_oci_lifecycle_id}"; then
-    echo "VirtFS mount survived OCI delete" >&2
-    exit 1
-  fi
+  __assert_no_host_virtfs
 
   trap - EXIT
   __cleanup

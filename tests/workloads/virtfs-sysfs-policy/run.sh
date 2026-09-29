@@ -92,8 +92,9 @@ __main() {
     --bundle "$_bundle" \
     --pid-file "${_bundle}/init.pid" \
     "$_virtfs_sysfs_policy_name"
-  sudo findmnt -rn -T "/var/lib/nscell/virtfs/${_virtfs_sysfs_policy_name}" -o FSTYPE |
-    grep -Eq '^fuse(\.nscellfs)?$'
+  __assert_container_virtfs \
+    "$(sudo cat "${_bundle}/init.pid")" \
+    /sys/module/nf_conntrack/parameters/hashsize
   sudo nscell --root "$_oci_runtime_root" start "$_virtfs_sysfs_policy_name"
   if ! __wait_for_stopped; then
     echo "VirtFS sysfs policy container did not stop" >&2
@@ -108,11 +109,7 @@ __main() {
   fi
 
   sudo nscell --root "$_oci_runtime_root" delete "$_virtfs_sysfs_policy_name"
-  if sudo findmnt -rn -t fuse,fuse.nscellfs |
-    grep -F "/${_virtfs_sysfs_policy_name}"; then
-    echo "VirtFS mount survived sysfs policy container deletion" >&2
-    exit 1
-  fi
+  __assert_no_host_virtfs
   __assert_nscell_ready
 
   trap - EXIT

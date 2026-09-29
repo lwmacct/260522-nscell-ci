@@ -128,8 +128,7 @@ __main() {
   _docker_pid="$(systemctl show --property MainPID --value docker.service)"
   [[ "$_daemon_pid" =~ ^[1-9][0-9]*$ && "$_docker_pid" =~ ^[1-9][0-9]*$ ]]
   __container_capability_exists "$_container_id_a"
-  sudo findmnt -rn -T "/var/lib/nscell/virtfs/${_container_id_a}" -o FSTYPE |
-    grep -Eq '^fuse(\.nscellfs)?$'
+  __assert_container_virtfs "$_pid" /proc/stat
   sudo systemctl kill --kill-whom=main --signal=SIGKILL nscell-daemon.service
   __wait_for_exit "$_daemon_pid"
   sudo systemctl reset-failed nscell-daemon.service
@@ -145,10 +144,7 @@ __main() {
     echo "container capability survived daemon restart" >&2
     return 1
   fi
-  if sudo findmnt -rn -t fuse,fuse.nscellfs | grep -F "/${_container_id_a}"; then
-    echo "VirtFS mount survived daemon restart" >&2
-    return 1
-  fi
+  __assert_no_host_virtfs
   sudo nscell daemon gate status | jq -e '.registeredContainers == 0' >/dev/null
   __create_and_start "$_container_id_a" "$_bundle_a"
   _pid="$(sudo cat "${_bundle_a}/init.pid")"
