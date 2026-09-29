@@ -13,14 +13,13 @@ source "${_workload_dir}/library/env.sh"
 source "${_workload_dir}/library/readiness.sh"
 source "${_workload_dir}/library/images.sh"
 
-# The OCI runtime's state root comes from whoever invokes it: docker goes
-# through containerd's shim, which passes a root of its own. A container created
-# that way therefore lives outside the daemon's default runtime root, and the
-# startup reaper used to miss it - the daemon restarted healthy while the
-# container kept running and unmanaged. This workload keeps that disagreement
-# under test instead of relying on the daemon's configured root matching.
+# Docker/containerd appends its own OCI --root argument. NSCell accepts it only
+# as an interoperation sentinel and stores state under the fixed daemon root.
+# This workload keeps that contract under test: a caller-selected root must not
+# move runtime state outside the root scanned by the fail-stop reaper.
 _shim_runtime_root="${NSCELL_CI_SHIM_RUNTIME_ROOT:-/var/run/docker/runtime-runc/moby}"
-_runtime_root_hint_dir="${NSCELL_CI_RUNTIME_ROOT_HINT_DIR:-/run/nscell/runtime-roots}"
+_fixed_runtime_root="${NSCELL_CI_OCI_RUNTIME_ROOT:-/run/nscell/runtime}"
+_capability_root="${NSCELL_CI_CAPABILITY_ROOT:-/run/nscell/capabilities}"
 _daemon_log_offset=0
 
 __cleanup() {
@@ -118,7 +117,7 @@ __main() {
   docker rm -f "$_daemon_fail_stop_docker_name" >/dev/null 2>&1 || true
   __ensure_host_image "$_oci_base_image"
 
-  __log "starting a container through docker, whose state root is the shim's"
+  __log "starting a container through docker while passing the shim root"
   docker run -d \
     --name "$_daemon_fail_stop_docker_name" \
     --runtime nscell \
@@ -131,16 +130,16 @@ __main() {
     return 1
   fi
 
-  if sudo test -d "${_oci_runtime_root}/${_container_id}"; then
-    echo "container state landed in the daemon's runtime root ${_oci_runtime_root}; this workload needs the disagreement" >&2
+  if ! sudo test -d "${_fixed_runtime_root}/${_container_id}"; then
+    echo "container state is missing from the fixed runtime root ${_fixed_runtime_root}" >&2
     return 1
   fi
-  if ! sudo test -d "${_shim_runtime_root}/${_container_id}"; then
-    echo "container state not found under the shim runtime root ${_shim_runtime_root}" >&2
+  if sudo test -e "${_shim_runtime_root}/${_container_id}"; then
+    echo "caller-selected runtime root escaped the fixed root: ${_shim_runtime_root}/${_container_id}" >&2
     return 1
   fi
-  if ! sudo test -d "$_runtime_root_hint_dir"; then
-    echo "runtime did not record its state root under ${_runtime_root_hint_dir}" >&2
+  if sudo test -e /run/nscell/runtime-roots; then
+    echo "runtime recreated the removed runtime-roots hint directory" >&2
     return 1
   fi
 
@@ -160,6 +159,10 @@ __main() {
     echo "temporary Docker rootfs is missing while the container runs" >&2
     return 1
   }
+  if [[ "$(sudo find "$_capability_root" -type f -name "${_container_id}.cap" | wc -l)" != 1 ]]; then
+    echo "active container must own exactly one capability file" >&2
+    return 1
+  fi
 
   # The daemon log is root-owned, and a redirect would be performed by this
   # unprivileged shell, so read the line count through sudo itself.
@@ -178,7 +181,7 @@ __main() {
   sudo systemctl start nscell-daemon.service
   systemctl is-active --quiet nscell-daemon.service
 
-  __log "asserting the restart reaped the container it was never told about"
+  __log "asserting the restart reaped the fixed-root container"
   _new_lines="$(sudo tail -n +"$((_daemon_log_offset + 1))" "${_daemon_log}")"
   if ! grep -Fq "stopping NSCell container ${_container_id:0:12}" <<<"${_new_lines}"; then
     echo "daemon did not reap the container left behind by the kill" >&2
@@ -187,8 +190,8 @@ __main() {
   fi
 
   __wait_for_container_stop
-  if sudo test -d "${_shim_runtime_root}/${_container_id}"; then
-    echo "runtime state survived the reap: ${_shim_runtime_root}/${_container_id}" >&2
+  if sudo test -e "${_fixed_runtime_root}/${_container_id}"; then
+    echo "runtime state survived the reap: ${_fixed_runtime_root}/${_container_id}" >&2
     return 1
   fi
   if __container_running; then
@@ -225,6 +228,10 @@ __main() {
   __assert_nscell_ready
   if __identity_entry_exists; then
     echo "deleted Docker container survived identity garbage collection" >&2
+    return 1
+  fi
+  if sudo test -e "$_capability_root"; then
+    echo "idle daemon retained capability state" >&2
     return 1
   fi
 

@@ -33,8 +33,6 @@ __state_json() {
   local _name="$1"
   local _cid _runtime_root
   local -a _runtime_roots=(
-    /run/docker/runtime-runc/moby
-    /run/docker/runtime-runc/nscell
     /run/nscell/runtime
   )
 

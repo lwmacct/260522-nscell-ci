@@ -449,7 +449,7 @@ PY
 }
 
 __check_control_plane_isolation() {
-	for _path in /run/nscell/daemon.sock /run/nscell/containers; do
+	for _path in /run/nscell/daemon.sock /run/nscell/capabilities; do
 		if [ -e "$_path" ] || [ -L "$_path" ]; then
 			echo "NSCell host control path is visible in the container: $_path" >&2
 			exit 1

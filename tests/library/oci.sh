@@ -51,7 +51,8 @@ __remove_oci_bundle() {
 __container_capability_exists() {
   local _id="$1"
 
-  sudo find /run/nscell/containers \
+  sudo test -d /run/nscell/capabilities || return 1
+  sudo find /run/nscell/capabilities \
     -mindepth 2 \
     -maxdepth 2 \
     -type f \
