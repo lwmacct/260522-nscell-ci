@@ -106,6 +106,22 @@ __check_mounts() {
 		"$(docker run --rm -v /run:/host-run "$_image" \
 			sh -c '[ -S /host-run/docker.sock ] && printf nscell-dind-run-ok')"
 
+	# A nested runtime can hand its own rootfs to a container it creates. The
+	# source is the DinD world, not the NSCell host, and the recursive tree
+	# keeps the managed /proc and /sys views attached.
+	printf '%s\n' nscell-dind-rootfs-bind-ok >/tmp/nscell-dind-rootfs-marker
+	__assert_output "rootfs-share" "nscell-dind-rootfs-bind-ok" \
+		"$(docker run --rm -v /:/hostfs "$_image" \
+			sh -c 'test "$(cat /hostfs/tmp/nscell-dind-rootfs-marker)" = nscell-dind-rootfs-bind-ok && \
+				test "$(wc -c </hostfs/proc/version)" -eq 0 && \
+				test -z "$(ls -A /hostfs/sys/block)" && \
+				test ! -e /hostfs/run/nscell/daemon.sock && \
+				printf nscell-dind-rootfs-bind-ok')"
+	rm -f /tmp/nscell-dind-rootfs-marker
+	__assert_refused "rootfs-readonly" \
+		docker run --rm -v /:/hostfs:ro "$_image" \
+		sh -c 'printf rejected >/hostfs/tmp/nscell-rootfs-readonly'
+
 	# A nested runtime's -v /proc and -v /sys are recursive clones of this
 	# container's managed views. The VirtFS submounts must remain attached: a
 	# non-recursive clone would expose the unfiltered procfs/sysfs mount roots.
