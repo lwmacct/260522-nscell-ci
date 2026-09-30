@@ -134,6 +134,22 @@ __check_mounts() {
 		sh -c 'printf rejected >/file'
 	rm -f /tmp/nscell-single-file-bind
 
+	# Docker resolves this real-world symlink to a zoneinfo file before asking
+	# runc for MS_REC|MS_RDONLY. The source lies on the DinD rootfs rather than
+	# a freshly created temporary volume file.
+	mkdir -p /usr/share/zoneinfo/Asia
+	printf '%s\n' nscell-zoneinfo-source >/usr/share/zoneinfo/Asia/Shanghai
+	ln -s /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+	__assert_output "zoneinfo-symlink-recursive-readonly" "nscell-zoneinfo-bind-ok" \
+		"$(docker run --rm -v /etc/localtime:/etc/localtime:ro "$_image" \
+			sh -c 'test -s /etc/localtime && printf nscell-zoneinfo-bind-ok')"
+	__assert_refused "zoneinfo-symlink-readonly-refused" \
+		docker run --rm -v /etc/localtime:/etc/localtime:ro "$_image" \
+		sh -c 'printf rejected >/etc/localtime'
+	rm -f /etc/localtime
+	rm -f /usr/share/zoneinfo/Asia/Shanghai
+	rmdir /usr/share/zoneinfo/Asia 2>/dev/null || true
+
 	# A nested runtime's -v /proc and -v /sys are recursive clones of this
 	# container's managed views. The VirtFS submounts must remain attached: a
 	# non-recursive clone would expose the unfiltered procfs/sysfs mount roots.
