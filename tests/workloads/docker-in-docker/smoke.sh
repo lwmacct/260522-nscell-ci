@@ -122,6 +122,18 @@ __check_mounts() {
 		docker run --rm -v /:/hostfs:ro "$_image" \
 		sh -c 'printf rejected >/hostfs/tmp/nscell-rootfs-readonly'
 
+	# Nested runtimes bind single files with MS_REC even though the mount tree
+	# has no children. This shape must remain read-only without rejecting the
+	# one-file clone.
+	printf '%s\n' nscell-single-file-bind-ok >/tmp/nscell-single-file-bind
+	__assert_output "single-file-recursive-readonly" "nscell-single-file-bind-ok" \
+		"$(docker run --rm -v /tmp/nscell-single-file-bind:/file:ro "$_image" \
+			sh -c 'test "$(cat /file)" = nscell-single-file-bind-ok && printf nscell-single-file-bind-ok')"
+	__assert_refused "single-file-readonly-refused" \
+		docker run --rm -v /tmp/nscell-single-file-bind:/file:ro "$_image" \
+		sh -c 'printf rejected >/file'
+	rm -f /tmp/nscell-single-file-bind
+
 	# A nested runtime's -v /proc and -v /sys are recursive clones of this
 	# container's managed views. The VirtFS submounts must remain attached: a
 	# non-recursive clone would expose the unfiltered procfs/sysfs mount roots.
