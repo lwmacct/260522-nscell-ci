@@ -106,6 +106,27 @@ __check_mounts() {
 		"$(docker run --rm -v /run:/host-run "$_image" \
 			sh -c '[ -S /host-run/docker.sock ] && printf nscell-dind-run-ok')"
 
+	# A nested runtime's -v /proc and -v /sys are recursive clones of this
+	# container's managed views. The VirtFS submounts must remain attached: a
+	# non-recursive clone would expose the unfiltered procfs/sysfs mount roots.
+	for _mode in writable readonly; do
+		_options="-v /proc:/host/proc -v /sys:/host/sys"
+		if [ "$_mode" = readonly ]; then
+			_options="-v /proc:/host/proc:ro -v /sys:/host/sys:ro"
+		fi
+		# shellcheck disable=SC2086 # _options is deliberately a word list.
+		docker run --rm $_options "$_image" sh -c '
+			stat -f -c "%T" /host/proc /host/sys
+			for _file in /host/proc/version /host/proc/partitions; do
+				[ "$(wc -c <"$_file")" -eq 0 ] || exit 1
+			done
+			[ -z "$(ls -A /host/sys/block)" ] || exit 1
+			grep -q " /host/proc/sys .* nscellfs " /proc/self/mountinfo
+			grep -q " /host/sys/block .* nscellfs " /proc/self/mountinfo
+		' || __fail "managed-view-$_mode clone lost its VirtFS subviews"
+		echo "dind-ok managed-view-$_mode-clone"
+	done
+
 	# `--privileged`: the inner container keeps CAP_SYS_ADMIN and the /dev entry
 	# Docker adds to its rootfs. An unprivileged container has neither (see
 	# __check_refusals).
@@ -207,10 +228,10 @@ __check_host_fingerprints() {
 __check_refusals() {
 	_image="$1"
 
-	# NSCell owns /proc and /sys; they are never bind operands, not even a
-	# container's own view of them.
-	__assert_refused "proc-bind" docker run --rm -v /proc:/host-proc "$_image" true
-	__assert_refused "sys-bind" docker run --rm -v /sys/kernel:/host-sys "$_image" true
+	# Kernel-view descendants are never bind operands. The exact /proc and /sys
+	# roots are handled above as recursive managed-view clones.
+	__assert_refused "proc-subpath-bind" docker run --rm -v /proc/sys:/host-proc-sys "$_image" true
+	__assert_refused "sys-subpath-bind" docker run --rm -v /sys/kernel:/host-sys "$_image" true
 
 	# A device node is not a general bind source: only an entry of this
 	# container's own /dev may be handed to an inner container's /dev.
