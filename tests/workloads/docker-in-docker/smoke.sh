@@ -155,6 +155,18 @@ __check_mounts() {
 	fi
 	echo "dind-ok host-sysfs-unchanged"
 
+	_cad_pid_before="$(cat /proc/sys/kernel/cad_pid)"
+	__assert_output "host-cad-pid-isolated" "nscell-dind-cad-pid-isolated-ok" \
+		"$(
+		docker run --rm --privileged -v /proc:/host/proc "$_image" \
+			sh -c 'printf x >/host/proc/sys/kernel/cad_pid; printf nscell-dind-cad-pid-isolated-ok'
+		)"
+	_cad_pid_after="$(cat /proc/sys/kernel/cad_pid)"
+	if [ "$_cad_pid_before" != "$_cad_pid_after" ]; then
+		__fail "host Ctrl-Alt-Del PID changed through cloned procfs"
+	fi
+	echo "dind-ok host-cad-pid-unchanged"
+
 	# `--privileged`: the inner container keeps CAP_SYS_ADMIN and the /dev entry
 	# Docker adds to its rootfs. An unprivileged container has neither (see
 	# __check_refusals).
