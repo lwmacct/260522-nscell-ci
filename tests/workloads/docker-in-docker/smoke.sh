@@ -99,6 +99,13 @@ __check_mounts() {
 		"$(docker run --rm --tmpfs /probe-tmp:size=1m,mode=1777 "$_image" \
 			sh -c 'printf nscell-dind-tmpfs-ok > /probe-tmp/marker && cat /probe-tmp/marker')"
 
+	# A nested runtime first recursively self-binds the prepared rootfs, then
+	# applies rshared propagation to a volume child. Skipping the self-bind left
+	# pivot_root(".") with an invalid rootfs topology.
+	__assert_output "rshared-volume" "nscell-dind-rshared-ok" \
+		"$(docker run --rm -v "${_src}:/data:rw,rshared" "$_image" \
+			sh -c 'grep -q " /data .* shared:" /proc/self/mountinfo && printf nscell-dind-rshared-ok')"
+
 	# An explicit, operator-authorized share of this container's /run: the inner
 	# container sees this world's Docker socket, which is the socket scenario the
 	# outer spec has to authorize on purpose.
