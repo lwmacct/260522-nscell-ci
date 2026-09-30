@@ -127,6 +127,34 @@ __check_mounts() {
 		echo "dind-ok managed-view-$_mode-clone"
 	done
 
+	# Moving a cloned VirtFS submount away would expose the underlying procfs or
+	# sysfs node. Legacy mount moves lack a source-object-capable enforcement
+	# path, so the operation must fail closed.
+	__assert_output "managed-view-move-refused" "nscell-dind-move-refused-ok" \
+		"$(docker run --rm --privileged -v /proc:/host/proc -v /sys:/host/sys "$_image" \
+			sh -c 'mkdir /tmp/sys-block; if mount --move /host/sys/block /tmp/sys-block; then exit 1; fi; \
+				grep -q " /host/sys/block .* nscellfs " /proc/self/mountinfo && \
+				printf nscell-dind-move-refused-ok')"
+
+	# The cloned proc mount is tied to this DinD PID namespace. It can name the
+	# DinD init process, but neither its root nor its mount namespace may expose
+	# the NSCell host control plane.
+	__assert_output "host-proc-control-plane" "nscell-dind-control-plane-ok" \
+		"$(docker run --rm --privileged -v /proc:/host/proc "$_image" \
+			sh -c 'test ! -e /host/proc/1/root/run/nscell/daemon.sock; \
+				nsenter --mount=/host/proc/1/ns/mnt sh -c "test ! -e /run/nscell/daemon.sock"; \
+				printf nscell-dind-control-plane-ok')"
+
+	_hashsize_before="$(cat /sys/module/nf_conntrack/parameters/hashsize)"
+	__assert_refused "host-sysfs-write" \
+		docker run --rm --privileged -v /sys:/host/sys "$_image" \
+		sh -c 'exec 3<>/host/sys/module/nf_conntrack/parameters/hashsize'
+	_hashsize_after="$(cat /sys/module/nf_conntrack/parameters/hashsize)"
+	if [ "$_hashsize_before" != "$_hashsize_after" ]; then
+		__fail "host conntrack hashsize changed through cloned sysfs"
+	fi
+	echo "dind-ok host-sysfs-unchanged"
+
 	# `--privileged`: the inner container keeps CAP_SYS_ADMIN and the /dev entry
 	# Docker adds to its rootfs. An unprivileged container has neither (see
 	# __check_refusals).
