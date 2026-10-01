@@ -181,9 +181,17 @@ __check_mounts() {
 	# Moving a cloned VirtFS submount away would expose the underlying procfs or
 	# sysfs node. Legacy mount moves lack a source-object-capable enforcement
 	# path, so the operation must fail closed.
+	# A managed view installed at a non-canonical target is still a kernel view.
+	# Neither its source subtree nor an ordinary file may be bound over it.
 	__assert_output "managed-view-move-refused" "nscell-dind-move-refused-ok" \
 		"$(docker run --rm --privileged -v /proc:/host/proc -v /sys:/host/sys "$_image" \
-			sh -c 'mkdir /tmp/sys-block; if mount --move /host/sys/block /tmp/sys-block; then exit 1; fi; \
+			sh -c 'mkdir /tmp/sys-block /tmp/proc-sys /tmp/sys-kernel; \
+				if mount --move /host/sys/block /tmp/sys-block; then exit 1; fi; \
+				touch /tmp/view-source; \
+				if mount --bind /host/proc/sys /tmp/proc-sys; then exit 1; fi; \
+				if mount --bind /host/sys/kernel /tmp/sys-kernel; then exit 1; fi; \
+				if mount --bind /tmp/view-source /host/proc/version; then exit 1; fi; \
+				if mount --bind /tmp/view-source /host/sys/kernel; then exit 1; fi; \
 				grep -q " /host/sys/block .* nscellfs " /proc/self/mountinfo && \
 				printf nscell-dind-move-refused-ok')"
 
