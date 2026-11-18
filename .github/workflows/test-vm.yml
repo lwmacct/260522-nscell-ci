@@ -164,6 +164,9 @@ jobs:
             _matrix="$(
               bash tests/manifest.sh select vm "${TEST_SUITE}" "${SELECTED_TARGETS}" "${_grouping}"
             )"
+            _matrix="$(
+              jq -c 'map(. + {job_timeout_minutes: (.timeout_minutes + 10)})' <<<"${_matrix}"
+            )"
             {
               echo "image_ref=${_image_ref}"
               echo "matrix=${_matrix}"
@@ -191,7 +194,10 @@ jobs:
     name: ${{ inputs.image_name || 'standard' }} VM / ${{ matrix.label }}
     needs: prepare
     runs-on: ubuntu-26.04
-    timeout-minutes: ${{ matrix.timeout_minutes }}
+    # The manifest timeout belongs to workload semantics. Installing Incus and
+    # pulling the VM image happen on a fresh hosted runner and have repeatedly
+    # consumed that budget before the guest starts; keep them separate.
+    timeout-minutes: ${{ matrix.job_timeout_minutes }}
     strategy:
       fail-fast: false
       max-parallel: 40

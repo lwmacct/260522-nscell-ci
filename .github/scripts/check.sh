@@ -72,7 +72,7 @@ __check_manifest() {
 	# bundling it would need a group token that means several targets.
 	_selection="$(
 		bash tests/manifest.sh select vm smoke \
-			kernel-capability-smoke,fuse-copy-file-range,new-mount-api-deny isolated
+			kernel-capability-smoke,virtfs-sysfs-policy,new-mount-api-deny isolated
 	)"
 	jq -e '
 		type == "array" and length == 3 and
