@@ -13,8 +13,14 @@ source "${_workload_dir}/library/env.sh"
 source "${_workload_dir}/library/readiness.sh"
 source "${_workload_dir}/library/images.sh"
 
+_readonly_probe_dir=""
+
 __cleanup() {
   docker rm -f "$_new_mount_api_deny_name" >/dev/null 2>&1 || true
+  if [[ -n "$_readonly_probe_dir" ]]; then
+    rm -rf -- "$_readonly_probe_dir"
+    _readonly_probe_dir=""
+  fi
 }
 
 __deny_output_has_case() {
@@ -152,6 +158,143 @@ PY
       return 1
     fi
   done
+}
+
+__run_readonly_anchor_case() {
+  local _output
+  local _expected_output="new-mount-api-readonly-anchor-ok:spoofed-fstype-contained"
+
+  __cleanup
+  _readonly_probe_dir="$(mktemp -d)"
+  _output="$(docker run --rm -i \
+    --name "$_new_mount_api_deny_name" \
+    --runtime nscell \
+    --privileged \
+    -v "${_readonly_probe_dir}:/mnt/ro:ro" \
+    "$_container_security_policy_base_image" \
+    python3 - <<'PY'
+import ctypes
+import os
+import platform
+import struct
+
+numbers = {
+    "x86_64": {"mount": 165, "open_tree": 428, "mount_setattr": 442},
+    "aarch64": {"mount": 165, "open_tree": 428, "mount_setattr": 442},
+}
+syscalls = numbers.get(platform.machine())
+if syscalls is None:
+    raise SystemExit(f"unsupported architecture: {platform.machine()}")
+
+libc = ctypes.CDLL(None, use_errno=True)
+libc.syscall.restype = ctypes.c_long
+MS_BIND = 4096
+MS_REMOUNT = 1
+OPEN_TREE_CLONE = 1
+OPEN_TREE_CLOEXEC = 8
+AT_EMPTY_PATH = 0x1000
+MOUNT_ATTR_RDONLY = 1
+
+
+def syscall(number, *arguments):
+    ctypes.set_errno(0)
+    result = libc.syscall(ctypes.c_long(number), *arguments)
+    return result, ctypes.get_errno()
+
+
+def assert_readonly_mount():
+    with open("/proc/self/mountinfo", encoding="utf-8") as mounts:
+        for line in mounts:
+            fields = line.split()
+            if len(fields) > 5 and fields[4] == "/mnt/ro":
+                if "ro" not in fields[5].split(","):
+                    raise SystemExit(f"readonly bind lost its ro flag: {fields[5]}")
+                return
+    raise SystemExit("readonly bind is missing from mountinfo")
+
+
+assert_readonly_mount()
+
+# For a bind remount the kernel ignores source and filesystem type. The spoofed
+# fstype must therefore never make the mediator reinterpret /mnt/ro as procfs or
+# clear its administrator-requested readonly flag. Refusing the request would
+# also be safe; silently widening it would not.
+remount_result, remount_errno = syscall(
+    syscalls["mount"],
+    None,
+    ctypes.c_char_p(b"/mnt/ro"),
+    ctypes.c_char_p(b"proc"),
+    ctypes.c_uint(MS_BIND | MS_REMOUNT),
+    None,
+)
+if remount_result not in (0, -1):
+    raise SystemExit(
+        f"spoofed-fstype remount returned an invalid result: {remount_result} errno={remount_errno}"
+    )
+assert_readonly_mount()
+
+clear_readonly = struct.pack("=QQQQ", 0, MOUNT_ATTR_RDONLY, 0, 0)
+setattr_result, setattr_errno = syscall(
+    syscalls["mount_setattr"],
+    ctypes.c_int(-100),
+    ctypes.c_char_p(b"/mnt/ro"),
+    ctypes.c_uint(0),
+    clear_readonly,
+    ctypes.c_size_t(struct.calcsize("=QQQQ")),
+)
+if setattr_result != -1 or setattr_errno != 1:
+    raise SystemExit(
+        f"path mount_setattr accepted RDONLY clearing: result={setattr_result} errno={setattr_errno}"
+    )
+
+tree_result, tree_errno = syscall(
+    syscalls["open_tree"],
+    ctypes.c_int(-100),
+    ctypes.c_char_p(b"/mnt/ro"),
+    ctypes.c_uint(OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC),
+)
+if tree_result >= 0:
+    fd_setattr_result, fd_setattr_errno = syscall(
+        syscalls["mount_setattr"],
+        ctypes.c_int(tree_result),
+        ctypes.c_char_p(b""),
+        ctypes.c_uint(AT_EMPTY_PATH),
+        clear_readonly,
+        ctypes.c_size_t(struct.calcsize("=QQQQ")),
+    )
+    os.close(tree_result)
+    if fd_setattr_result != -1 or fd_setattr_errno != 1:
+        raise SystemExit(
+            "proxy mount_setattr accepted RDONLY clearing: "
+            f"result={fd_setattr_result} errno={fd_setattr_errno}"
+        )
+elif tree_result != -1 or tree_errno != 1:
+    raise SystemExit(f"open_tree returned invalid result: {tree_result} errno={tree_errno}")
+
+try:
+    marker = os.open("/mnt/ro/marker", os.O_WRONLY | os.O_CREAT, 0o600)
+    os.close(marker)
+except OSError as exc:
+    if exc.errno != 30:
+        raise SystemExit(f"readonly bind write returned unexpected errno {exc.errno}: {exc}")
+else:
+    raise SystemExit("readonly bind accepted a write after remount attempts")
+
+assert_readonly_mount()
+print("new-mount-api-readonly-anchor-ok:spoofed-fstype-contained")
+PY
+  )"
+  printf 'new-mount-api-readonly-anchor-output=%q\n' "$_output"
+  if [[ "$_output" != "$_expected_output" ]]; then
+    echo "readonly anchor new-mount API case failed" >&2
+    return 1
+  fi
+  if [[ -e "${_readonly_probe_dir}/marker" ]]; then
+    echo "readonly anchor write reached the host directory" >&2
+    return 1
+  fi
+
+  __cleanup
 }
 
 __run_authorized_case() {
@@ -800,6 +943,9 @@ __main() {
 
   __log "checking structured new-mount denials for requests the mediator refuses"
   __run_deny_case system
+
+  __log "checking that spoofed fstype and new mount API cannot degrade a readonly host bind"
+  __run_readonly_anchor_case
 
   __log "checking proxy acquisition, attributes, and attach for each workload path family"
   __run_authorized_case \
