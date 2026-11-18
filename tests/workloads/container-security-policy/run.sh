@@ -653,6 +653,16 @@ __unload_xt_comment() {
   fi
 }
 
+__unload_veth() {
+  if lsmod | grep -q '^veth '; then
+    sudo modprobe -r veth
+  fi
+  if lsmod | grep -q '^veth '; then
+    echo "cannot isolate veth module state for module autoload policy" >&2
+    exit 1
+  fi
+}
+
 __check_module_autoload_policy() (
   local _name="${_container_security_policy_name}-module"
   local _log_start
@@ -660,6 +670,7 @@ __check_module_autoload_policy() (
   __cleanup() {
     docker rm -f "$_name" >/dev/null 2>&1 || true
     sudo modprobe -r xt_comment >/dev/null 2>&1 || true
+    sudo modprobe -r veth >/dev/null 2>&1 || true
   }
   trap __cleanup EXIT
 
@@ -690,6 +701,14 @@ __check_module_autoload_policy() (
     ip6tables -w 5 -A OUTPUT -m comment --comment nscell-ci -j ACCEPT
   __assert_bpf_module_audit "$_log_start" allow ip6t_comment
   lsmod | grep -q '^xt_comment '
+
+  __unload_veth
+  __log "checking rtnl-link-veth module autoload allowlist"
+  _log_start="$(wc -l <"$_daemon_log" 2>/dev/null || printf '0\n')"
+  timeout 120 docker run --rm --network none --runtime nscell "$_container_security_policy_image" \
+    nscell-ci-container-security-policy-probe veth-module-autoload-allow
+  __assert_bpf_module_audit "$_log_start" allow rtnl-link-veth
+  lsmod | grep -q '^veth '
 
   __cleanup
   trap - EXIT

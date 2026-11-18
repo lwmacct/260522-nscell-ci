@@ -431,6 +431,18 @@ for family in (5, 30):
 PY
 }
 
+__check_veth_module_autoload_allow() {
+	_left="nscell-veth0"
+	_right="nscell-veth1"
+	trap 'ip link del "$_left" 2>/dev/null || true' EXIT
+	ip link add "$_left" type veth peer name "$_right"
+	ip link show dev "$_left" >/dev/null
+	ip link show dev "$_right" >/dev/null
+	ip link del "$_left"
+	trap - EXIT
+	echo "veth-module-autoload-allow-ok"
+}
+
 __check_audit_log_flood() {
 	python3 - <<'PY'
 import ctypes
@@ -558,6 +570,9 @@ __main() {
 		module-autoload-deny)
 			__check_module_autoload_deny
 			;;
+		veth-module-autoload-allow)
+			__check_veth_module_autoload_allow
+			;;
 		audit-log-flood)
 			__check_audit_log_flood
 			;;
@@ -568,7 +583,7 @@ __main() {
 			__check_process_identity_isolation
 			;;
 		*)
-			echo "usage: $0 {cgroup-delegation|privileged-resource-negative-policy|cgroup-subtree-mount-policy|kernel-interface-file-policy|cgroup-subtree-kernel-interface-file-policy|xattr-negative-policy|xattr-trusted-overlay-policy|xattr-selinux-label-policy|proc-sys-policy|sys-module-policy|host-fingerprint-policy|module-autoload-deny|audit-log-flood|control-plane-isolation|process-identity-isolation}" >&2
+			echo "usage: $0 {cgroup-delegation|privileged-resource-negative-policy|cgroup-subtree-mount-policy|kernel-interface-file-policy|cgroup-subtree-kernel-interface-file-policy|xattr-negative-policy|xattr-trusted-overlay-policy|xattr-selinux-label-policy|proc-sys-policy|sys-module-policy|host-fingerprint-policy|module-autoload-deny|veth-module-autoload-allow|audit-log-flood|control-plane-isolation|process-identity-isolation}" >&2
 			exit 2
 			;;
 	esac
